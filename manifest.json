@@ -10,7 +10,6 @@
   "permissions": [
     "activeTab"
   ],
-  "optional_permissions": ["tabs"],
   "host_permissions": [
     "https://yootrad.yooliz.com/liste-des-devis/creer-un-devis/*"
   ],

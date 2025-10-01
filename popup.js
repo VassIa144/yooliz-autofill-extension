@@ -1,7 +1,7 @@
 const vehicleData = {
-  registrationNumber: "AB-123-CD",
-  vin: "VF3ABC12345678901",
-  mileage: "120000",
+  make: "Peugeot",
+  model: "308",
+  engine: "BlueHDi 130",
   fuelType: "Diesel",
   usageType: "Particulier"
 };
@@ -10,35 +10,8 @@ function logStatus(message, data) {
   console.log(`[Popup] ${message}`, data ?? "");
 }
 
-async function ensureTabsPermission() {
-  try {
-    const hasPermission = await chrome.permissions.contains({ permissions: ["tabs"] });
-
-    if (hasPermission) {
-      return true;
-    }
-
-    const granted = await chrome.permissions.request({ permissions: ["tabs"] });
-
-    if (!granted) {
-      logStatus("User denied optional tabs permission");
-    }
-
-    return granted;
-  } catch (error) {
-    console.error("[Popup] Failed to verify tabs permission", error);
-    return false;
-  }
-}
-
 async function getActiveTabId() {
   try {
-    const hasTabsAccess = await ensureTabsPermission();
-
-    if (!hasTabsAccess) {
-      return null;
-    }
-
     const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
     return activeTab?.id ?? null;

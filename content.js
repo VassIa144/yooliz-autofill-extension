@@ -102,9 +102,9 @@ const handleFillForm = async (data = {}) => {
 
   await delay(400);
 
-  await fillInputValue("#input_2_127", data.registrationNumber || "AB-123-CD");
-  await fillInputValue("#input_2_128", data.vin || "VF3ABC12345678901");
-  await fillInputValue("#input_2_129", data.mileage || "120000");
+  await fillInputValue("#input_2_127", data.make ?? "");
+  await fillInputValue("#input_2_128", data.model ?? "");
+  await fillInputValue("#input_2_129", data.engine ?? "");
   await selectOptionValue("#input_2_88", data.fuelType || "Diesel");
   await selectOptionValue("#input_2_142", data.usageType || "Particulier");
 
