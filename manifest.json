@@ -8,16 +8,16 @@
     "default_popup": "popup.html"
   },
   "permissions": [
-    "activeTab",
-    "tabs"
+    "activeTab"
   ],
+  "optional_permissions": ["tabs"],
   "host_permissions": [
-    "https://yootrad.yooliz.com/liste-des-devis/creer-un-devis/"
+    "https://yootrad.yooliz.com/liste-des-devis/creer-un-devis/*"
   ],
   "content_scripts": [
     {
       "matches": [
-        "https://yootrad.yooliz.com/liste-des-devis/creer-un-devis/"
+        "https://yootrad.yooliz.com/liste-des-devis/creer-un-devis/*"
       ],
       "js": ["content.js"],
       "run_at": "document_idle"
