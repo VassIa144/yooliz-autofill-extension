@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Yooliz Autofill",
+  "version": "1.0.0",
+  "description": "Extension d'autoremplissage pour la page de création de devis Yooliz.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://yootrad.yooliz.com/liste-des-devis/creer-un-devis/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Yooliz Autofill"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://yootrad.yooliz.com/liste-des-devis/creer-un-devis/*"
+      ],
+      "js": ["content.js"],
+      "css": ["styles.css"]
+    }
+  ]
+}
