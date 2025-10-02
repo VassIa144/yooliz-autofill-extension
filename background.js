@@ -82,6 +82,14 @@ const HEADER_ALIASES = {
   engine: ["motorisation", "engine", "finition"],
   fuelType: ["carburant", "fuel", "fueltype", "energie"],
   usageType: ["usage", "usage_type", "type_usage"],
+  vehicleType: ["type_vehicule", "vehicule_type", "typevehicule", "type"],
+  vehicleCategory: [
+    "categorie",
+    "categorie_vehicule",
+    "vehicle_category",
+    "categorie_vehicule",
+    "categorievehicule",
+  ],
 };
 
 const normalizeHeader = (header = "") =>
@@ -114,6 +122,8 @@ const transformRowToQuote = (rowObject, index) => {
     engine: findValueByAliases(rowObject, HEADER_ALIASES.engine),
     fuelType: findValueByAliases(rowObject, HEADER_ALIASES.fuelType),
     usageType: findValueByAliases(rowObject, HEADER_ALIASES.usageType),
+    vehicleType: findValueByAliases(rowObject, HEADER_ALIASES.vehicleType),
+    vehicleCategory: findValueByAliases(rowObject, HEADER_ALIASES.vehicleCategory),
     raw: rowObject,
   };
 

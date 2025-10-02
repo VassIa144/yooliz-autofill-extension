@@ -51,6 +51,8 @@ const sendFillRequest = async (quote) => {
     engine: quote.engine || "",
     fuelType: quote.fuelType || "",
     usageType: quote.usageType || "",
+    vehicleType: quote.vehicleType || "",
+    vehicleCategory: quote.vehicleCategory || "",
   };
 
   try {
@@ -66,12 +68,14 @@ const sendFillRequest = async (quote) => {
 
     log("Requête de remplissage envoyée", payload);
     setStatus(`Devis « ${quote.label} » envoyé.`, "success");
+    return true;
   } catch (error) {
     console.error("[Popup] Erreur lors de l'envoi de la requête", error);
     const message = error?.message
       ? `Erreur lors de l'envoi : ${error.message}`
       : "Impossible d'envoyer le devis au formulaire.";
     setStatus(message, "error");
+    return false;
   }
 };
 
@@ -79,27 +83,74 @@ const createQuoteElement = (quote) => {
   const item = document.createElement("li");
   item.className = "popup__list-item";
 
+  const header = document.createElement("div");
+  header.className = "popup__list-header";
+
   const title = document.createElement("p");
   title.className = "popup__list-title";
   title.textContent = quote.label;
+
+  const progress = document.createElement("span");
+  progress.className = "popup__list-progress";
+  progress.setAttribute("role", "progressbar");
+  progress.setAttribute("aria-hidden", "true");
+
+  header.appendChild(title);
+  header.appendChild(progress);
 
   const meta = document.createElement("p");
   meta.className = "popup__list-meta";
   const metaParts = [quote.make, quote.model, quote.engine].filter(Boolean);
   meta.textContent = metaParts.length > 0 ? metaParts.join(" • ") : "Informations véhicule indisponibles";
 
+  const secondaryMetaParts = [quote.vehicleType, quote.vehicleCategory].filter(Boolean);
+  const secondaryMeta = document.createElement("p");
+  secondaryMeta.className = "popup__list-meta popup__list-meta--secondary";
+  secondaryMeta.textContent =
+    secondaryMetaParts.length > 0 ? secondaryMetaParts.join(" • ") : "";
+
   const actionButton = document.createElement("button");
   actionButton.type = "button";
   actionButton.className = "popup__list-action";
   actionButton.textContent = "Remplir";
-  actionButton.addEventListener("click", () => {
+  let isSending = false;
+
+  const setLoadingState = (isLoading) => {
+    isSending = isLoading;
+    actionButton.disabled = isLoading;
+    item.classList.toggle("popup__list-item--loading", isLoading);
+    if (isLoading) {
+      progress.classList.add("popup__list-progress--visible");
+      progress.setAttribute("aria-hidden", "false");
+      progress.setAttribute("aria-label", `Envoi du devis « ${quote.label} »`);
+    } else {
+      progress.classList.remove("popup__list-progress--visible");
+      progress.setAttribute("aria-hidden", "true");
+      progress.removeAttribute("aria-label");
+    }
+  };
+
+  actionButton.addEventListener("click", async () => {
+    if (isSending) {
+      return;
+    }
+
     log("Devis sélectionné", quote);
     setStatus(`Envoi du devis « ${quote.label} »…`, "loading");
-    sendFillRequest(quote);
+    setLoadingState(true);
+
+    try {
+      await sendFillRequest(quote);
+    } finally {
+      setLoadingState(false);
+    }
   });
 
-  item.appendChild(title);
+  item.appendChild(header);
   item.appendChild(meta);
+  if (secondaryMetaParts.length > 0) {
+    item.appendChild(secondaryMeta);
+  }
   item.appendChild(actionButton);
 
   return item;

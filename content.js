@@ -1,5 +1,7 @@
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const DEFAULT_WAIT_OPTIONS = { timeout: 5000, interval: 100 };
+
 const log = (message, extra) => {
   if (extra !== undefined) {
     console.log(`[Content] ${message}`, extra);
@@ -37,11 +39,126 @@ const triggerEvents = (element, events) => {
   });
 };
 
-const fillInputValue = async (selector, value) => {
-  const element = await waitForElement(selector);
+const normalizeText = (text = "") =>
+  text
+    .toString()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const findElementByLabelText = (labelText) => {
+  if (!labelText) {
+    return null;
+  }
+
+  const normalizedTarget = normalizeText(labelText);
+
+  const labels = Array.from(document.querySelectorAll("label"));
+  for (const label of labels) {
+    const normalizedLabel = normalizeText(label.textContent || "");
+
+    if (!normalizedLabel || !normalizedLabel.includes(normalizedTarget)) {
+      continue;
+    }
+
+    if (label.htmlFor) {
+      const control = document.getElementById(label.htmlFor);
+      if (control) {
+        return control;
+      }
+    }
+
+    const fallbackControl = label.querySelector("input, select, textarea");
+    if (fallbackControl) {
+      return fallbackControl;
+    }
+  }
+
+  return null;
+};
+
+const waitForLabelElement = async (labelText, options = DEFAULT_WAIT_OPTIONS) => {
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < options.timeout) {
+    const control = findElementByLabelText(labelText);
+    if (control) {
+      return control;
+    }
+
+    await delay(options.interval);
+  }
+
+  return null;
+};
+
+const resolveElementTarget = async (target, options = DEFAULT_WAIT_OPTIONS) => {
+  if (!target) {
+    return null;
+  }
+
+  if (typeof target === "string") {
+    return waitForElement(target, options);
+  }
+
+  if (Array.isArray(target)) {
+    for (const candidate of target) {
+      const element = await resolveElementTarget(candidate, options);
+      if (element) {
+        return element;
+      }
+    }
+
+    return null;
+  }
+
+  if (typeof target === "object") {
+    const selectors = [];
+
+    if (typeof target.selector === "string") {
+      selectors.push(target.selector);
+    }
+
+    if (Array.isArray(target.selectors)) {
+      target.selectors
+        .filter((item) => typeof item === "string")
+        .forEach((item) => selectors.push(item));
+    }
+
+    for (const selector of selectors) {
+      const directMatch = document.querySelector(selector);
+      if (directMatch) {
+        return directMatch;
+      }
+    }
+
+    for (const selector of selectors) {
+      const element = await waitForElement(selector, options);
+      if (element) {
+        return element;
+      }
+    }
+
+    if (target.labelText) {
+      const control = findElementByLabelText(target.labelText);
+      if (control) {
+        return control;
+      }
+
+      return waitForLabelElement(target.labelText, options);
+    }
+  }
+
+  return null;
+};
+
+const fillInputValue = async (target, value) => {
+  const element = await resolveElementTarget(target);
 
   if (!element) {
-    log(`Element not found for selector: ${selector}`);
+    log(`Element not found for target`, target);
     return false;
   }
 
@@ -49,40 +166,54 @@ const fillInputValue = async (selector, value) => {
   element.value = value ?? "";
   triggerEvents(element, ["input", "change", "blur"]);
 
-  log(`Filled ${selector} with value: ${value}`);
+  log("Filled field with value", { target, value });
   return true;
 };
 
-const selectOptionValue = async (selector, value) => {
-  const element = await waitForElement(selector);
+const selectOptionValue = async (target, value) => {
+  const element = await resolveElementTarget(target);
 
   if (!element) {
-    log(`Select element not found for selector: ${selector}`);
+    log(`Select element not found for target`, target);
     return false;
   }
 
-  const option = Array.from(element.options || []).find((item) => {
-    const text = item.textContent?.trim();
-    return item.value === value || (text && text === value);
-  });
-
-  if (option) {
-    element.value = option.value;
-  } else if (value !== undefined) {
-    element.value = value;
+  if (value === undefined || value === null || value === "") {
+    log(`No value provided for select`, target);
+    return true;
   }
 
+  const normalizedValue = normalizeText(value);
+  const options = Array.from(element.options || []);
+  const option =
+    options.find((item) => {
+      const optionValue = normalizeText(item.value ?? "");
+      const optionText = normalizeText(item.textContent ?? "");
+      return optionValue === normalizedValue || optionText === normalizedValue;
+    }) ||
+    options.find((item) => {
+      const optionValue = normalizeText(item.value ?? "");
+      const optionText = normalizeText(item.textContent ?? "");
+      return optionText.includes(normalizedValue) || normalizedValue.includes(optionText);
+    });
+
+  if (!option) {
+    log(`Option not found for value: ${value}`, target);
+    return false;
+  }
+
+  element.value = option.value;
   triggerEvents(element, ["input", "change", "blur"]);
 
-  log(`Selected ${selector} option: ${element.value}`);
+  log("Selected option for field", { target, value: element.value });
   return true;
 };
 
-const setCheckboxState = async (selector, shouldCheck = true) => {
-  const checkbox = await waitForElement(selector);
+const setCheckboxState = async (target, shouldCheck = true) => {
+  const checkbox = await resolveElementTarget(target);
 
   if (!checkbox) {
-    log(`Checkbox not found for selector: ${selector}`);
+    log(`Checkbox not found for target`, target);
     return false;
   }
 
@@ -91,7 +222,7 @@ const setCheckboxState = async (selector, shouldCheck = true) => {
     triggerEvents(checkbox, ["input", "change", "click"]);
   }
 
-  log(`Checkbox ${selector} set to ${shouldCheck}`);
+  log("Checkbox field updated", { target, shouldCheck });
   return true;
 };
 
@@ -125,6 +256,29 @@ const handleFillForm = async (data = {}) => {
     fillInputValue("#input_2_129", data.engine ?? ""),
     "Impossible de remplir le champ « Motorisation »"
   );
+  if (data.vehicleType) {
+    await ensureStep(
+      selectOptionValue(
+        { selectors: ["#input_2_130", "#input_2_87"], labelText: "Type de véhicule" },
+        data.vehicleType
+      ),
+      "Impossible de sélectionner le type de véhicule."
+    );
+  } else {
+    log("Vehicle type non fourni, étape ignorée.");
+  }
+
+  if (data.vehicleCategory) {
+    await ensureStep(
+      selectOptionValue(
+        { selectors: ["#input_2_143", "#input_2_90"], labelText: "Catégorie" },
+        data.vehicleCategory
+      ),
+      "Impossible de sélectionner la catégorie."
+    );
+  } else {
+    log("Catégorie de véhicule non fournie, étape ignorée.");
+  }
   await ensureStep(
     selectOptionValue("#input_2_88", data.fuelType || "Diesel"),
     "Impossible de sélectionner le carburant."
