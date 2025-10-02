@@ -1,5 +1,6 @@
 const statusElement = document.getElementById("status");
 const quotesListElement = document.getElementById("quotes-list");
+const filledQuotes = new Set();
 
 const STATUS_CLASSES = ["popup__status--loading", "popup__status--error", "popup__status--success"];
 
@@ -79,6 +80,18 @@ const sendFillRequest = async (quote) => {
   }
 };
 
+const getQuoteKey = (quote) => {
+  if (quote?.id) {
+    return `id:${quote.id}`;
+  }
+
+  if (quote?.label) {
+    return `label:${quote.label}`;
+  }
+
+  return JSON.stringify(quote ?? {});
+};
+
 const createQuoteElement = (quote) => {
   const item = document.createElement("li");
   item.className = "popup__list-item";
@@ -90,12 +103,18 @@ const createQuoteElement = (quote) => {
   title.className = "popup__list-title";
   title.textContent = quote.label;
 
+  const statusBadge = document.createElement("span");
+  statusBadge.className = "popup__list-status";
+  statusBadge.textContent = "Rempli";
+  statusBadge.setAttribute("aria-hidden", "true");
+
   const progress = document.createElement("span");
   progress.className = "popup__list-progress";
   progress.setAttribute("role", "progressbar");
   progress.setAttribute("aria-hidden", "true");
 
   header.appendChild(title);
+  header.appendChild(statusBadge);
   header.appendChild(progress);
 
   const meta = document.createElement("p");
@@ -114,6 +133,7 @@ const createQuoteElement = (quote) => {
   actionButton.className = "popup__list-action";
   actionButton.textContent = "Remplir";
   let isSending = false;
+  const quoteKey = getQuoteKey(quote);
 
   const setLoadingState = (isLoading) => {
     isSending = isLoading;
@@ -130,6 +150,21 @@ const createQuoteElement = (quote) => {
     }
   };
 
+  const setFilledState = (isFilled) => {
+    item.classList.toggle("popup__list-item--filled", isFilled);
+    if (isFilled) {
+      statusBadge.setAttribute("aria-hidden", "false");
+      filledQuotes.add(quoteKey);
+    } else {
+      statusBadge.setAttribute("aria-hidden", "true");
+      filledQuotes.delete(quoteKey);
+    }
+  };
+
+  if (filledQuotes.has(quoteKey)) {
+    setFilledState(true);
+  }
+
   actionButton.addEventListener("click", async () => {
     if (isSending) {
       return;
@@ -140,7 +175,10 @@ const createQuoteElement = (quote) => {
     setLoadingState(true);
 
     try {
-      await sendFillRequest(quote);
+      const success = await sendFillRequest(quote);
+      if (success) {
+        setFilledState(true);
+      }
     } finally {
       setLoadingState(false);
     }

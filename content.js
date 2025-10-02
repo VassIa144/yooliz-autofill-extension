@@ -1,6 +1,6 @@
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const DEFAULT_WAIT_OPTIONS = { timeout: 5000, interval: 100 };
+const DEFAULT_WAIT_OPTIONS = { timeout: 5000, interval: 50 };
 
 const log = (message, extra) => {
   if (extra !== undefined) {
@@ -241,8 +241,6 @@ const handleFillForm = async (data = {}) => {
     setCheckboxState("#choice_2_131_1", true),
     "Impossible d'activer la saisie manuelle."
   );
-
-  await delay(400);
 
   await ensureStep(
     fillInputValue("#input_2_127", data.make ?? ""),

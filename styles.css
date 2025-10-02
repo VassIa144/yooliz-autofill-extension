@@ -89,6 +89,22 @@ body {
   color: inherit;
 }
 
+.popup__list-status {
+  display: none;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #198754;
+  background: rgba(25, 135, 84, 0.12);
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.popup__list-status::before {
+  content: "✓";
+  margin-right: 4px;
+}
+
 .popup__list-meta {
   margin: 0;
   font-size: 0.8rem;
@@ -107,6 +123,12 @@ body {
   background: #e9ecef;
   overflow: hidden;
   display: none;
+}
+
+.popup__list-item--filled .popup__list-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .popup__list-progress::after {
