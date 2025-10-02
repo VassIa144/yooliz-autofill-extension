@@ -134,10 +134,11 @@ const createQuoteElement = (quote) => {
   actionButton.textContent = "Remplir";
   let isSending = false;
   const quoteKey = getQuoteKey(quote);
+  let isFilled = filledQuotes.has(quoteKey);
 
   const setLoadingState = (isLoading) => {
     isSending = isLoading;
-    actionButton.disabled = isLoading;
+    actionButton.disabled = isLoading || isFilled;
     item.classList.toggle("popup__list-item--loading", isLoading);
     if (isLoading) {
       progress.classList.add("popup__list-progress--visible");
@@ -150,18 +151,23 @@ const createQuoteElement = (quote) => {
     }
   };
 
-  const setFilledState = (isFilled) => {
+  const setFilledState = (filled) => {
+    isFilled = Boolean(filled);
     item.classList.toggle("popup__list-item--filled", isFilled);
+    statusBadge.setAttribute("aria-hidden", isFilled ? "false" : "true");
     if (isFilled) {
-      statusBadge.setAttribute("aria-hidden", "false");
+      actionButton.classList.add("popup__list-action--filled");
+      actionButton.textContent = "✓ Rempli";
       filledQuotes.add(quoteKey);
     } else {
-      statusBadge.setAttribute("aria-hidden", "true");
+      actionButton.classList.remove("popup__list-action--filled");
+      actionButton.textContent = "Remplir";
       filledQuotes.delete(quoteKey);
     }
+    actionButton.disabled = isFilled || isSending;
   };
 
-  if (filledQuotes.has(quoteKey)) {
+  if (isFilled) {
     setFilledState(true);
   }
 

@@ -39,6 +39,54 @@ const triggerEvents = (element, events) => {
   });
 };
 
+const waitForSelectorsOrLabel = async (
+  selectors = [],
+  labelText,
+  options = DEFAULT_WAIT_OPTIONS
+) => {
+  const uniqueSelectors = Array.from(
+    new Set(selectors.filter((selector) => typeof selector === "string" && selector))
+  );
+
+  const tryResolve = () => {
+    for (const selector of uniqueSelectors) {
+      try {
+        const element = document.querySelector(selector);
+        if (element) {
+          return element;
+        }
+      } catch (error) {
+        log(`Invalid selector skipped: ${selector}`, error);
+      }
+    }
+
+    if (labelText) {
+      const control = findElementByLabelText(labelText);
+      if (control) {
+        return control;
+      }
+    }
+
+    return null;
+  };
+
+  const immediateMatch = tryResolve();
+  if (immediateMatch) {
+    return immediateMatch;
+  }
+
+  const startTime = Date.now();
+  while (Date.now() - startTime < options.timeout) {
+    await delay(options.interval);
+    const nextMatch = tryResolve();
+    if (nextMatch) {
+      return nextMatch;
+    }
+  }
+
+  return null;
+};
+
 const normalizeText = (text = "") =>
   text
     .toString()
@@ -127,27 +175,11 @@ const resolveElementTarget = async (target, options = DEFAULT_WAIT_OPTIONS) => {
         .forEach((item) => selectors.push(item));
     }
 
-    for (const selector of selectors) {
-      const directMatch = document.querySelector(selector);
-      if (directMatch) {
-        return directMatch;
-      }
-    }
+    const labelText = typeof target.labelText === "string" ? target.labelText : undefined;
 
-    for (const selector of selectors) {
-      const element = await waitForElement(selector, options);
-      if (element) {
-        return element;
-      }
-    }
-
-    if (target.labelText) {
-      const control = findElementByLabelText(target.labelText);
-      if (control) {
-        return control;
-      }
-
-      return waitForLabelElement(target.labelText, options);
+    const directMatch = await waitForSelectorsOrLabel(selectors, labelText, options);
+    if (directMatch) {
+      return directMatch;
     }
   }
 
@@ -269,7 +301,7 @@ const handleFillForm = async (data = {}) => {
   if (data.vehicleCategory) {
     await ensureStep(
       selectOptionValue(
-        { selectors: ["#input_2_143", "#input_2_90"], labelText: "Catégorie" },
+        { selectors: ["#input_2_90", "#input_2_143"], labelText: "Catégorie" },
         data.vehicleCategory
       ),
       "Impossible de sélectionner la catégorie."
