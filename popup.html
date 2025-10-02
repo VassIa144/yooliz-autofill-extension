@@ -1,15 +1,16 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Test Auto-Fill</title>
+    <title>Devis Yooliz</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main class="popup">
-      <h1 class="popup__title">Test Auto-Fill</h1>
-      <button id="test-button" type="button" class="popup__button">Test</button>
+    <main class="popup" aria-live="polite">
+      <h1 class="popup__title">Liste des devis</h1>
+      <p id="status" class="popup__status" role="status"></p>
+      <ul id="quotes-list" class="popup__list" aria-label="Devis disponibles"></ul>
     </main>
     <script src="popup.js"></script>
   </body>

@@ -7,12 +7,13 @@
     "default_title": "Test Auto-Fill",
     "default_popup": "popup.html"
   },
-  "permissions": [
-    "activeTab"
-  ],
   "host_permissions": [
-    "https://yootrad.yooliz.com/liste-des-devis/creer-un-devis/*"
+    "https://yootrad.yooliz.com/liste-des-devis/creer-un-devis/*",
+    "https://sheets.googleapis.com/*"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": [

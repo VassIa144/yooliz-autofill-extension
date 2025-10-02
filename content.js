@@ -111,6 +111,23 @@ const handleFillForm = async (data = {}) => {
   log("Form auto-fill completed");
 };
 
+const registerContentTab = () => {
+  try {
+    chrome.runtime.sendMessage({ action: "registerContentTab" }, () => {
+      if (chrome.runtime.lastError) {
+        log("Failed to register content tab", chrome.runtime.lastError);
+        return;
+      }
+
+      log("Content tab registered with background");
+    });
+  } catch (error) {
+    log("Unexpected error while registering content tab", error);
+  }
+};
+
+registerContentTab();
+
 chrome.runtime.onMessage.addListener((message) => {
   if (message?.action === "fillForm") {
     handleFillForm(message.data);

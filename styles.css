@@ -8,7 +8,7 @@
 body {
   margin: 0;
   padding: 16px;
-  min-width: 220px;
+  min-width: 260px;
 }
 
 .popup {
@@ -25,24 +25,85 @@ body {
   text-align: center;
 }
 
-.popup__button {
-  padding: 10px 16px;
+.popup__status {
+  margin: 0;
+  min-height: 1.2rem;
+  font-size: 0.85rem;
+  color: #495057;
+}
+
+.popup__status--loading {
+  color: #0d6efd;
+}
+
+.popup__status--error {
+  color: #dc3545;
+}
+
+.popup__status--success {
+  color: #198754;
+}
+
+.popup__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.popup__list-item {
+  background: #ffffff;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
+}
+
+.popup__list-item:hover,
+.popup__list-item:focus-within {
+  border-color: #0d6efd;
+  box-shadow: 0 2px 6px rgba(13, 110, 253, 0.15);
+}
+
+.popup__list-title {
+  margin: 0;
   font-size: 0.95rem;
+  font-weight: 600;
+  color: inherit;
+}
+
+.popup__list-meta {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #6c757d;
+}
+
+.popup__list-action {
+  align-self: flex-start;
+  padding: 6px 12px;
+  font-size: 0.8rem;
   font-weight: 600;
   color: #ffffff;
   background: #0d6efd;
   border: none;
-  border-radius: 6px;
+  border-radius: 999px;
   cursor: pointer;
   transition: background 0.2s ease;
 }
 
-.popup__button:hover,
-.popup__button:focus {
+.popup__list-action:hover,
+.popup__list-action:focus {
   background: #0b5ed7;
   outline: none;
 }
 
-.popup__button:active {
+.popup__list-action:active {
   background: #0a53be;
 }
