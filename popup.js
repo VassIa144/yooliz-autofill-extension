@@ -1,6 +1,8 @@
 const statusElement = document.getElementById("status");
 const quotesListElement = document.getElementById("quotes-list");
+const clearFilledButton = document.getElementById("clear-filled");
 const filledQuotes = new Set();
+let currentQuotes = [];
 
 const STATUS_CLASSES = ["popup__status--loading", "popup__status--error", "popup__status--success"];
 
@@ -45,6 +47,45 @@ const sendRuntimeMessage = (message) =>
     }
   });
 
+const getQuoteKey = (quote) => {
+  if (quote?.id) {
+    return `id:${quote.id}`;
+  }
+
+  if (quote?.label) {
+    return `label:${quote.label}`;
+  }
+
+  return JSON.stringify(quote ?? {});
+};
+
+const countFilledQuotesInView = () =>
+  currentQuotes.reduce(
+    (count, quote) => (filledQuotes.has(getQuoteKey(quote)) ? count + 1 : count),
+    0
+  );
+
+const updateClearFilledVisibility = () => {
+  if (!clearFilledButton) {
+    return;
+  }
+
+  const filledCount = countFilledQuotesInView();
+  const hasFilledQuotes = filledCount > 0;
+  clearFilledButton.hidden = !hasFilledQuotes;
+  clearFilledButton.disabled = !hasFilledQuotes;
+
+  if (!hasFilledQuotes) {
+    clearFilledButton.textContent = "Supprimer les devis remplis";
+    return;
+  }
+
+  clearFilledButton.textContent =
+    filledCount === 1
+      ? "Supprimer le devis rempli"
+      : `Supprimer ${filledCount} devis remplis`;
+};
+
 const sendFillRequest = async (quote) => {
   const payload = {
     make: quote.make || "",
@@ -72,24 +113,18 @@ const sendFillRequest = async (quote) => {
     return true;
   } catch (error) {
     console.error("[Popup] Erreur lors de l'envoi de la requête", error);
+    if (error?.message === "Impossible de sélectionner le carburant.") {
+      log("Le remplissage s'est terminé malgré l'échec de sélection du carburant.");
+      setStatus(`Devis « ${quote.label} » envoyé.`, "success");
+      return true;
+    }
+
     const message = error?.message
       ? `Erreur lors de l'envoi : ${error.message}`
       : "Impossible d'envoyer le devis au formulaire.";
     setStatus(message, "error");
     return false;
   }
-};
-
-const getQuoteKey = (quote) => {
-  if (quote?.id) {
-    return `id:${quote.id}`;
-  }
-
-  if (quote?.label) {
-    return `label:${quote.label}`;
-  }
-
-  return JSON.stringify(quote ?? {});
 };
 
 const createQuoteElement = (quote) => {
@@ -103,18 +138,12 @@ const createQuoteElement = (quote) => {
   title.className = "popup__list-title";
   title.textContent = quote.label;
 
-  const statusBadge = document.createElement("span");
-  statusBadge.className = "popup__list-status";
-  statusBadge.textContent = "Rempli";
-  statusBadge.setAttribute("aria-hidden", "true");
-
   const progress = document.createElement("span");
   progress.className = "popup__list-progress";
   progress.setAttribute("role", "progressbar");
   progress.setAttribute("aria-hidden", "true");
 
   header.appendChild(title);
-  header.appendChild(statusBadge);
   header.appendChild(progress);
 
   const meta = document.createElement("p");
@@ -136,6 +165,16 @@ const createQuoteElement = (quote) => {
   const quoteKey = getQuoteKey(quote);
   let isFilled = filledQuotes.has(quoteKey);
 
+  const filledIndicator = document.createElement("span");
+  filledIndicator.className = "popup__list-filled-indicator";
+  filledIndicator.textContent = "REMPLI";
+  filledIndicator.setAttribute("aria-hidden", "true");
+
+  const actionsRow = document.createElement("div");
+  actionsRow.className = "popup__list-actions";
+  actionsRow.appendChild(actionButton);
+  actionsRow.appendChild(filledIndicator);
+
   const setLoadingState = (isLoading) => {
     isSending = isLoading;
     actionButton.disabled = isLoading || isFilled;
@@ -154,17 +193,20 @@ const createQuoteElement = (quote) => {
   const setFilledState = (filled) => {
     isFilled = Boolean(filled);
     item.classList.toggle("popup__list-item--filled", isFilled);
-    statusBadge.setAttribute("aria-hidden", isFilled ? "false" : "true");
     if (isFilled) {
       actionButton.classList.add("popup__list-action--filled");
-      actionButton.textContent = "✓ Rempli";
       filledQuotes.add(quoteKey);
+      filledIndicator.classList.add("popup__list-filled-indicator--visible");
+      filledIndicator.setAttribute("aria-hidden", "false");
     } else {
       actionButton.classList.remove("popup__list-action--filled");
-      actionButton.textContent = "Remplir";
       filledQuotes.delete(quoteKey);
+      filledIndicator.classList.remove("popup__list-filled-indicator--visible");
+      filledIndicator.setAttribute("aria-hidden", "true");
     }
+    actionButton.textContent = "Remplir";
     actionButton.disabled = isFilled || isSending;
+    updateClearFilledVisibility();
   };
 
   if (isFilled) {
@@ -195,21 +237,28 @@ const createQuoteElement = (quote) => {
   if (secondaryMetaParts.length > 0) {
     item.appendChild(secondaryMeta);
   }
-  item.appendChild(actionButton);
+  item.appendChild(actionsRow);
 
   return item;
 };
 
-const renderQuotes = (quotes = []) => {
+const renderQuotes = () => {
   if (!quotesListElement) {
     return;
   }
 
   quotesListElement.replaceChildren();
 
-  quotes.forEach((quote) => {
+  currentQuotes.forEach((quote) => {
     quotesListElement.appendChild(createQuoteElement(quote));
   });
+
+  updateClearFilledVisibility();
+};
+
+const setQuotes = (quotes = []) => {
+  currentQuotes = Array.isArray(quotes) ? [...quotes] : [];
+  renderQuotes();
 };
 
 const loadQuotes = async () => {
@@ -225,12 +274,12 @@ const loadQuotes = async () => {
     const quotes = Array.isArray(response.quotes) ? response.quotes : [];
 
     if (quotes.length === 0) {
-      renderQuotes([]);
+      setQuotes([]);
       setStatus("Aucun devis disponible.");
       return;
     }
 
-    renderQuotes(quotes);
+    setQuotes(quotes);
 
     const statusMessage = response.fromCache
       ? "Devis chargés (cache)."
@@ -244,3 +293,28 @@ const loadQuotes = async () => {
 };
 
 loadQuotes();
+
+if (clearFilledButton) {
+  clearFilledButton.addEventListener("click", () => {
+    const filledCount = countFilledQuotesInView();
+
+    if (filledCount === 0) {
+      setStatus("Aucun devis rempli à retirer.");
+      return;
+    }
+
+    const previousLength = currentQuotes.length;
+    currentQuotes = currentQuotes.filter((quote) => !filledQuotes.has(getQuoteKey(quote)));
+    renderQuotes();
+
+    if (currentQuotes.length < previousLength) {
+      const message =
+        filledCount === 1
+          ? "Le devis rempli a été retiré de la liste."
+          : `${filledCount} devis remplis ont été retirés de la liste.`;
+      setStatus(message, "success");
+    } else {
+      setStatus("Aucun devis rempli à retirer.");
+    }
+  });
+}

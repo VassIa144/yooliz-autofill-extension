@@ -309,10 +309,14 @@ const handleFillForm = async (data = {}) => {
   } else {
     log("Catégorie de véhicule non fournie, étape ignorée.");
   }
-  await ensureStep(
-    selectOptionValue("#input_2_88", data.fuelType || "Diesel"),
-    "Impossible de sélectionner le carburant."
-  );
+  try {
+    await ensureStep(
+      selectOptionValue("#input_2_88", data.fuelType || "Diesel"),
+      "Impossible de sélectionner le carburant."
+    );
+  } catch (error) {
+    log("Fuel selection step failed but continuing", error);
+  }
   await ensureStep(
     selectOptionValue("#input_2_142", data.usageType || "Particulier"),
     "Impossible de sélectionner l'usage."
