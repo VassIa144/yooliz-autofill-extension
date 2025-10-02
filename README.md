@@ -4,10 +4,8 @@ Cette extension Chrome permet de récupérer la liste des devis depuis Google Sh
 
 ## Configuration
 
-1. Renseignez dans `background.js` les constantes suivantes avec les valeurs fournies par Yooliz :
-   - `GOOGLE_SHEETS_API_KEY`
-   - `SPREADSHEET_ID`
-   - `QUOTES_RANGE` (par défaut `Devis!A1:Z`)
+1. Les constantes `GOOGLE_SHEETS_API_KEY`, `SPREADSHEET_ID` et `QUOTES_RANGE` sont renseignées dans `background.js`.
+   Adaptez-les si la source Google Sheets change.
 2. Rechargez l’extension dans Chrome après toute modification.
 
 ## Utilisation

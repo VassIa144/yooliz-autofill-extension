@@ -68,7 +68,10 @@ const sendFillRequest = async (quote) => {
     setStatus(`Devis « ${quote.label} » envoyé.`, "success");
   } catch (error) {
     console.error("[Popup] Erreur lors de l'envoi de la requête", error);
-    setStatus("Impossible d'envoyer le devis au formulaire.", "error");
+    const message = error?.message
+      ? `Erreur lors de l'envoi : ${error.message}`
+      : "Impossible d'envoyer le devis au formulaire.";
+    setStatus(message, "error");
   }
 };
 

@@ -1,10 +1,75 @@
-// Remplacez ces constantes par l'identifiant et l'API key fournis par Yooliz.
-const GOOGLE_SHEETS_API_KEY = "REPLACE_WITH_GOOGLE_SHEETS_API_KEY";
-const SPREADSHEET_ID = "REPLACE_WITH_SPREADSHEET_ID";
-const QUOTES_RANGE = "Devis!A1:Z";
+const GOOGLE_SHEETS_API_KEY = "AIzaSyAfy-Lq0veFj7v2oUZXSZbdOSn8pdOOTmY";
+const SPREADSHEET_ID = "1wGfG-tNnxo17dnaQItdvAmrmcYm-2ofRcKmFQ2CI198";
+const QUOTES_RANGE = "Sheet1!A1:Z";
 const CACHE_DURATION_MS = 5 * 60 * 1000;
 
 let registeredYoolizTabId = null;
+
+const storageSession = chrome.storage?.session;
+const STORAGE_KEYS = {
+  registeredTabId: "registeredYoolizTabId",
+};
+
+const persistRegisteredTabId = (tabId) =>
+  new Promise((resolve) => {
+    if (!storageSession) {
+      registeredYoolizTabId = tabId;
+      resolve();
+      return;
+    }
+
+    if (typeof tabId === "number") {
+      storageSession.set({ [STORAGE_KEYS.registeredTabId]: tabId }, () => {
+        if (chrome.runtime.lastError) {
+          console.warn(
+            "[Background] Échec de la persistance de l'onglet Yooliz",
+            chrome.runtime.lastError
+          );
+        }
+
+        registeredYoolizTabId = tabId;
+        resolve();
+      });
+      return;
+    }
+
+    storageSession.remove(STORAGE_KEYS.registeredTabId, () => {
+      if (chrome.runtime.lastError) {
+        console.warn(
+          "[Background] Échec de la suppression de l'onglet stocké",
+          chrome.runtime.lastError
+        );
+      }
+
+      registeredYoolizTabId = null;
+      resolve();
+    });
+  });
+
+const restoreRegisteredTabId = () => {
+  if (!storageSession) {
+    return;
+  }
+
+  storageSession.get(STORAGE_KEYS.registeredTabId, (result) => {
+    if (chrome.runtime.lastError) {
+      console.warn(
+        "[Background] Impossible de restaurer l'onglet Yooliz",
+        chrome.runtime.lastError
+      );
+      return;
+    }
+
+    const storedTabId = result?.[STORAGE_KEYS.registeredTabId];
+
+    if (typeof storedTabId === "number") {
+      registeredYoolizTabId = storedTabId;
+      console.log("[Background] Onglet Yooliz restauré", storedTabId);
+    }
+  });
+};
+
+restoreRegisteredTabId();
 
 let cachedQuotes = [];
 let lastFetchTimestamp = 0;
@@ -120,7 +185,7 @@ const getQuotes = async () => {
 
 const sendQuoteToContentScript = (payload) =>
   new Promise((resolve, reject) => {
-    if (!registeredYoolizTabId) {
+    if (typeof registeredYoolizTabId !== "number") {
       reject(new Error("Aucun onglet Yooliz enregistré."));
       return;
     }
@@ -137,10 +202,15 @@ const sendQuoteToContentScript = (payload) =>
             const lastErrorMessage = chrome.runtime.lastError.message || "Échec de l'envoi au contenu.";
 
             if (lastErrorMessage.includes("No tab with id")) {
-              registeredYoolizTabId = null;
+              persistRegisteredTabId(null);
             }
 
             reject(new Error(lastErrorMessage));
+            return;
+          }
+
+          if (response?.success === false) {
+            reject(new Error(response?.error || "Le contenu a signalé un échec."));
             return;
           }
 
@@ -157,10 +227,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const tabId = sender?.tab?.id;
 
     if (typeof tabId === "number") {
-      registeredYoolizTabId = tabId;
-      console.log("[Background] Onglet Yooliz enregistré", tabId);
-      sendResponse({ success: true });
-      return false;
+      persistRegisteredTabId(tabId).then(() => {
+        console.log("[Background] Onglet Yooliz enregistré", tabId);
+        sendResponse({ success: true });
+      });
+      return true;
     }
 
     sendResponse({ success: false, error: "Impossible d'identifier l'onglet du contenu." });
@@ -171,6 +242,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log("[Background] Requête de remplissage reçue", message.quoteId || "(sans identifiant)");
     if (!message?.data || typeof message.data !== "object") {
       sendResponse({ success: false, error: "Données de devis invalides." });
+      return false;
+    }
+
+    if (typeof registeredYoolizTabId !== "number") {
+      persistRegisteredTabId(null);
+      sendResponse({ success: false, error: "Aucun onglet Yooliz prêt à recevoir les données." });
       return false;
     }
 

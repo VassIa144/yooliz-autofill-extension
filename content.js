@@ -95,41 +95,97 @@ const setCheckboxState = async (selector, shouldCheck = true) => {
   return true;
 };
 
+const ensureStep = async (stepPromise, errorMessage) => {
+  const result = await stepPromise;
+
+  if (!result) {
+    throw new Error(errorMessage);
+  }
+};
+
 const handleFillForm = async (data = {}) => {
   log("Received fillForm action", data);
 
-  await setCheckboxState("#choice_2_131_1", true);
+  await ensureStep(
+    setCheckboxState("#choice_2_131_1", true),
+    "Impossible d'activer la saisie manuelle."
+  );
 
   await delay(400);
 
-  await fillInputValue("#input_2_127", data.make ?? "");
-  await fillInputValue("#input_2_128", data.model ?? "");
-  await fillInputValue("#input_2_129", data.engine ?? "");
-  await selectOptionValue("#input_2_88", data.fuelType || "Diesel");
-  await selectOptionValue("#input_2_142", data.usageType || "Particulier");
+  await ensureStep(
+    fillInputValue("#input_2_127", data.make ?? ""),
+    "Impossible de remplir le champ « Marque »"
+  );
+  await ensureStep(
+    fillInputValue("#input_2_128", data.model ?? ""),
+    "Impossible de remplir le champ « Modèle »"
+  );
+  await ensureStep(
+    fillInputValue("#input_2_129", data.engine ?? ""),
+    "Impossible de remplir le champ « Motorisation »"
+  );
+  await ensureStep(
+    selectOptionValue("#input_2_88", data.fuelType || "Diesel"),
+    "Impossible de sélectionner le carburant."
+  );
+  await ensureStep(
+    selectOptionValue("#input_2_142", data.usageType || "Particulier"),
+    "Impossible de sélectionner l'usage."
+  );
 
   log("Form auto-fill completed");
 };
 
-const registerContentTab = () => {
+const registerContentTab = ({ silent = false } = {}) => {
   try {
-    chrome.runtime.sendMessage({ action: "registerContentTab" }, () => {
+    chrome.runtime.sendMessage({ action: "registerContentTab" }, (response) => {
       if (chrome.runtime.lastError) {
-        log("Failed to register content tab", chrome.runtime.lastError);
+        if (!silent) {
+          log("Failed to register content tab", chrome.runtime.lastError);
+        }
         return;
       }
 
-      log("Content tab registered with background");
+      if (!response?.success) {
+        if (!silent) {
+          log("Background did not accept registration", response);
+        }
+        return;
+      }
+
+      if (!silent) {
+        log("Content tab registered with background");
+      }
     });
   } catch (error) {
-    log("Unexpected error while registering content tab", error);
+    if (!silent) {
+      log("Unexpected error while registering content tab", error);
+    }
   }
 };
 
 registerContentTab();
-
-chrome.runtime.onMessage.addListener((message) => {
-  if (message?.action === "fillForm") {
-    handleFillForm(message.data);
+setInterval(() => registerContentTab({ silent: true }), 15000);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) {
+    registerContentTab({ silent: true });
   }
+});
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.action === "fillForm") {
+    handleFillForm(message.data)
+      .then(() => {
+        sendResponse({ success: true });
+      })
+      .catch((error) => {
+        log("Auto-fill failed", error);
+        sendResponse({ success: false, error: error?.message || "Remplissage impossible." });
+      });
+
+    return true;
+  }
+
+  return undefined;
 });
