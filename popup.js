@@ -1,8 +1,15 @@
 const statusElement = document.getElementById("status");
 const quotesListElement = document.getElementById("quotes-list");
 const clearFilledButton = document.getElementById("clear-filled");
+const storage = chrome?.storage?.local;
 const filledQuotes = new Set();
+const hiddenFilledQuotes = new Set();
 let currentQuotes = [];
+
+const STORAGE_KEYS = {
+  filledQuotes: "yoolizFilledQuotes",
+  hiddenFilledQuotes: "yoolizHiddenFilledQuotes",
+};
 
 const STATUS_CLASSES = ["popup__status--loading", "popup__status--error", "popup__status--success"];
 
@@ -59,11 +66,79 @@ const getQuoteKey = (quote) => {
   return JSON.stringify(quote ?? {});
 };
 
+const persistPopupState = () => {
+  if (!storage) {
+    return;
+  }
+
+  try {
+    storage.set(
+      {
+        [STORAGE_KEYS.filledQuotes]: Array.from(filledQuotes),
+        [STORAGE_KEYS.hiddenFilledQuotes]: Array.from(hiddenFilledQuotes),
+      },
+      () => {
+        if (chrome.runtime.lastError) {
+          console.warn("[Popup] Impossible d'enregistrer l'état", chrome.runtime.lastError);
+        }
+      }
+    );
+  } catch (error) {
+    console.warn("[Popup] Échec de la persistance de l'état", error);
+  }
+};
+
+const restorePopupState = () =>
+  new Promise((resolve) => {
+    if (!storage) {
+      resolve();
+      return;
+    }
+
+    try {
+      storage.get(
+        [STORAGE_KEYS.filledQuotes, STORAGE_KEYS.hiddenFilledQuotes],
+        (result) => {
+          if (chrome.runtime.lastError) {
+            console.warn(
+              "[Popup] Impossible de restaurer l'état précédent",
+              chrome.runtime.lastError
+            );
+            resolve();
+            return;
+          }
+
+          const storedFilled = result?.[STORAGE_KEYS.filledQuotes];
+          const storedHidden = result?.[STORAGE_KEYS.hiddenFilledQuotes];
+
+          if (Array.isArray(storedFilled)) {
+            storedFilled.forEach((key) => filledQuotes.add(key));
+          }
+
+          if (Array.isArray(storedHidden)) {
+            storedHidden.forEach((key) => hiddenFilledQuotes.add(key));
+          }
+
+          updateClearFilledVisibility();
+          renderQuotes();
+          resolve();
+        }
+      );
+    } catch (error) {
+      console.warn("[Popup] Échec de la restauration de l'état", error);
+      resolve();
+    }
+  });
+
 const countFilledQuotesInView = () =>
-  currentQuotes.reduce(
-    (count, quote) => (filledQuotes.has(getQuoteKey(quote)) ? count + 1 : count),
-    0
-  );
+  currentQuotes.reduce((count, quote) => {
+    const key = getQuoteKey(quote);
+    if (hiddenFilledQuotes.has(key)) {
+      return count;
+    }
+
+    return filledQuotes.has(key) ? count + 1 : count;
+  }, 0);
 
 const updateClearFilledVisibility = () => {
   if (!clearFilledButton) {
@@ -76,14 +151,14 @@ const updateClearFilledVisibility = () => {
   clearFilledButton.disabled = !hasFilledQuotes;
 
   if (!hasFilledQuotes) {
-    clearFilledButton.textContent = "Supprimer les devis remplis";
+    clearFilledButton.textContent = "Supprimer les devis utilisés";
     return;
   }
 
   clearFilledButton.textContent =
     filledCount === 1
-      ? "Supprimer le devis rempli"
-      : `Supprimer ${filledCount} devis remplis`;
+      ? "Supprimer le devis utilisé"
+      : `Supprimer ${filledCount} devis utilisés`;
 };
 
 const sendFillRequest = async (quote) => {
@@ -113,8 +188,13 @@ const sendFillRequest = async (quote) => {
     return true;
   } catch (error) {
     console.error("[Popup] Erreur lors de l'envoi de la requête", error);
-    if (error?.message === "Impossible de sélectionner le carburant.") {
-      log("Le remplissage s'est terminé malgré l'échec de sélection du carburant.");
+    if (
+      error?.message === "Impossible de sélectionner le carburant." ||
+      error?.message === "Impossible de sélectionner l'usage."
+    ) {
+      log(
+        "Le remplissage s'est terminé malgré un échec de sélection de carburant ou d'usage."
+      );
       setStatus(`Devis « ${quote.label} » envoyé.`, "success");
       return true;
     }
@@ -167,7 +247,7 @@ const createQuoteElement = (quote) => {
 
   const filledIndicator = document.createElement("span");
   filledIndicator.className = "popup__list-filled-indicator";
-  filledIndicator.textContent = "REMPLI";
+  filledIndicator.textContent = "UTILISÉ";
   filledIndicator.setAttribute("aria-hidden", "true");
 
   const actionsRow = document.createElement("div");
@@ -196,6 +276,7 @@ const createQuoteElement = (quote) => {
     if (isFilled) {
       actionButton.classList.add("popup__list-action--filled");
       filledQuotes.add(quoteKey);
+      hiddenFilledQuotes.delete(quoteKey);
       filledIndicator.classList.add("popup__list-filled-indicator--visible");
       filledIndicator.setAttribute("aria-hidden", "false");
     } else {
@@ -206,6 +287,7 @@ const createQuoteElement = (quote) => {
     }
     actionButton.textContent = "Remplir";
     actionButton.disabled = isFilled || isSending;
+    persistPopupState();
     updateClearFilledVisibility();
   };
 
@@ -249,9 +331,11 @@ const renderQuotes = () => {
 
   quotesListElement.replaceChildren();
 
-  currentQuotes.forEach((quote) => {
-    quotesListElement.appendChild(createQuoteElement(quote));
-  });
+  currentQuotes
+    .filter((quote) => !hiddenFilledQuotes.has(getQuoteKey(quote)))
+    .forEach((quote) => {
+      quotesListElement.appendChild(createQuoteElement(quote));
+    });
 
   updateClearFilledVisibility();
 };
@@ -292,7 +376,12 @@ const loadQuotes = async () => {
   }
 };
 
-loadQuotes();
+const initializePopup = async () => {
+  await restorePopupState();
+  await loadQuotes();
+};
+
+initializePopup();
 
 if (clearFilledButton) {
   clearFilledButton.addEventListener("click", () => {
@@ -303,18 +392,19 @@ if (clearFilledButton) {
       return;
     }
 
-    const previousLength = currentQuotes.length;
-    currentQuotes = currentQuotes.filter((quote) => !filledQuotes.has(getQuoteKey(quote)));
-    renderQuotes();
+    const filledKeysToHide = currentQuotes
+      .filter((quote) => filledQuotes.has(getQuoteKey(quote)))
+      .map((quote) => getQuoteKey(quote));
 
-    if (currentQuotes.length < previousLength) {
-      const message =
-        filledCount === 1
-          ? "Le devis rempli a été retiré de la liste."
-          : `${filledCount} devis remplis ont été retirés de la liste.`;
-      setStatus(message, "success");
-    } else {
-      setStatus("Aucun devis rempli à retirer.");
-    }
+    filledKeysToHide.forEach((key) => hiddenFilledQuotes.add(key));
+
+    renderQuotes();
+    persistPopupState();
+
+    const message =
+      filledCount === 1
+        ? "Le devis utilisé a été retiré de la liste."
+        : `${filledCount} devis utilisés ont été retirés de la liste.`;
+    setStatus(message, "success");
   });
 }

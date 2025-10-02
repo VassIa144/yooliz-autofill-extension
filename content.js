@@ -203,7 +203,7 @@ const fillInputValue = async (target, value) => {
 };
 
 const selectOptionValue = async (target, value) => {
-  const element = await resolveElementTarget(target);
+  let element = await resolveElementTarget(target);
 
   if (!element) {
     log(`Select element not found for target`, target);
@@ -216,29 +216,53 @@ const selectOptionValue = async (target, value) => {
   }
 
   const normalizedValue = normalizeText(value);
-  const options = Array.from(element.options || []);
-  const option =
-    options.find((item) => {
-      const optionValue = normalizeText(item.value ?? "");
-      const optionText = normalizeText(item.textContent ?? "");
-      return optionValue === normalizedValue || optionText === normalizedValue;
-    }) ||
-    options.find((item) => {
-      const optionValue = normalizeText(item.value ?? "");
-      const optionText = normalizeText(item.textContent ?? "");
-      return optionText.includes(normalizedValue) || normalizedValue.includes(optionText);
-    });
+  const maxAttempts = 6;
 
-  if (!option) {
-    log(`Option not found for value: ${value}`, target);
-    return false;
+  const findMatchingOption = (selectElement) => {
+    const options = Array.from(selectElement?.options || []);
+    return (
+      options.find((item) => {
+        const optionValue = normalizeText(item.value ?? "");
+        const optionText = normalizeText(item.textContent ?? "");
+        return optionValue === normalizedValue || optionText === normalizedValue;
+      }) ||
+      options.find((item) => {
+        const optionValue = normalizeText(item.value ?? "");
+        const optionText = normalizeText(item.textContent ?? "");
+        return optionText.includes(normalizedValue) || normalizedValue.includes(optionText);
+      })
+    );
+  };
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    if (!element) {
+      log("Select element became unavailable, tentative de nouvelle résolution", target);
+      element = await resolveElementTarget(target);
+      if (!element) {
+        await delay(80);
+        continue;
+      }
+    }
+
+    const option = findMatchingOption(element);
+
+    if (option) {
+      element.value = option.value;
+      triggerEvents(element, ["input", "change", "blur"]);
+
+      log("Selected option for field", { target, value: element.value });
+      return true;
+    }
+
+    await delay(100);
+
+    if (!document.contains(element)) {
+      element = null;
+    }
   }
 
-  element.value = option.value;
-  triggerEvents(element, ["input", "change", "blur"]);
-
-  log("Selected option for field", { target, value: element.value });
-  return true;
+  log(`Option not found for value: ${value}`, target);
+  return false;
 };
 
 const setCheckboxState = async (target, shouldCheck = true) => {
@@ -318,7 +342,18 @@ const handleFillForm = async (data = {}) => {
     log("Fuel selection step failed but continuing", error);
   }
   await ensureStep(
-    selectOptionValue("#input_2_142", data.usageType || "Particulier"),
+    selectOptionValue(
+      {
+        selectors: [
+          "#input_2_142",
+          "#input_2_91",
+          "select[name='input_2_142']",
+          "select[name='input_2_91']",
+        ],
+        labelText: "Usage",
+      },
+      data.usageType || "Particulier"
+    ),
     "Impossible de sélectionner l'usage."
   );
 
