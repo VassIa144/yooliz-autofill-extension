@@ -345,6 +345,23 @@ const setQuotes = (quotes = []) => {
   renderQuotes();
 };
 
+const notifyRemovedQuotes = async (quotes) => {
+  if (!Array.isArray(quotes) || quotes.length === 0) {
+    return { success: true, removed: 0 };
+  }
+
+  const response = await sendRuntimeMessage({
+    action: "removeUsedQuotes",
+    quotes,
+  });
+
+  if (!response?.success) {
+    throw new Error(response?.error || "Le service de suppression a échoué.");
+  }
+
+  return response;
+};
+
 const loadQuotes = async () => {
   setStatus("Chargement des devis…", "loading");
 
@@ -384,7 +401,7 @@ const initializePopup = async () => {
 initializePopup();
 
 if (clearFilledButton) {
-  clearFilledButton.addEventListener("click", () => {
+  clearFilledButton.addEventListener("click", async () => {
     const filledCount = countFilledQuotesInView();
 
     if (filledCount === 0) {
@@ -392,19 +409,48 @@ if (clearFilledButton) {
       return;
     }
 
-    const filledKeysToHide = currentQuotes
-      .filter((quote) => filledQuotes.has(getQuoteKey(quote)))
-      .map((quote) => getQuoteKey(quote));
+    const filledQuotesInView = currentQuotes.filter((quote) =>
+      filledQuotes.has(getQuoteKey(quote))
+    );
+
+    const filledKeysToHide = filledQuotesInView.map((quote) => getQuoteKey(quote));
+
+    const previousHidden = new Set(hiddenFilledQuotes);
 
     filledKeysToHide.forEach((key) => hiddenFilledQuotes.add(key));
 
     renderQuotes();
     persistPopupState();
 
-    const message =
-      filledCount === 1
-        ? "Le devis utilisé a été retiré de la liste."
-        : `${filledCount} devis utilisés ont été retirés de la liste.`;
-    setStatus(message, "success");
+    const removalPayload = filledQuotesInView.map((quote) => ({
+      key: getQuoteKey(quote),
+      id: quote.id || "",
+      label: quote.label || "",
+      rowNumber: typeof quote.rowNumber === "number" ? quote.rowNumber : null,
+      raw: quote.raw || null,
+    }));
+
+    setStatus("Suppression des devis utilisés…", "loading");
+
+    try {
+      await notifyRemovedQuotes(removalPayload);
+      const message =
+        filledCount === 1
+          ? "Le devis utilisé a été retiré de la liste."
+          : `${filledCount} devis utilisés ont été retirés de la liste.`;
+      setStatus(message, "success");
+    } catch (error) {
+      console.error("[Popup] Échec de la notification de suppression", error);
+      hiddenFilledQuotes.clear();
+      previousHidden.forEach((key) => hiddenFilledQuotes.add(key));
+      renderQuotes();
+      persistPopupState();
+      setStatus(
+        error?.message
+          ? `Erreur lors de la suppression des devis utilisés : ${error.message}`
+          : "Impossible de notifier la suppression des devis utilisés.",
+        "error"
+      );
+    }
   });
 }

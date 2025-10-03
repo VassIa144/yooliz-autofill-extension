@@ -2,6 +2,7 @@ const GOOGLE_SHEETS_API_KEY = "AIzaSyAfy-Lq0veFj7v2oUZXSZbdOSn8pdOOTmY";
 const SPREADSHEET_ID = "1wGfG-tNnxo17dnaQItdvAmrmcYm-2ofRcKmFQ2CI198";
 const QUOTES_RANGE = "Sheet1!A1:Z";
 const CACHE_DURATION_MS = 5 * 60 * 1000;
+const N8N_DELETE_WORKFLOW_URL = "https://n8n.example.com/webhook/delete-used-quotes";
 
 let registeredYoolizTabId = null;
 
@@ -125,6 +126,7 @@ const transformRowToQuote = (rowObject, index) => {
     vehicleType: findValueByAliases(rowObject, HEADER_ALIASES.vehicleType),
     vehicleCategory: findValueByAliases(rowObject, HEADER_ALIASES.vehicleCategory),
     raw: rowObject,
+    rowNumber: index + 2,
   };
 
   return quote;
@@ -191,6 +193,66 @@ const getQuotes = async () => {
   lastFetchTimestamp = now;
 
   return { quotes, fromCache: false };
+};
+
+const ensureDeleteWorkflowConfigured = () => {
+  if (!N8N_DELETE_WORKFLOW_URL) {
+    throw new Error(
+      "Le webhook n8n de suppression n'est pas configuré. Mettez à jour N8N_DELETE_WORKFLOW_URL dans background.js."
+    );
+  }
+};
+
+const triggerDeleteWorkflow = async (quotes = []) => {
+  ensureDeleteWorkflowConfigured();
+
+  if (!Array.isArray(quotes) || quotes.length === 0) {
+    return { success: true, removed: 0 };
+  }
+
+  const response = await fetch(N8N_DELETE_WORKFLOW_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ quotes }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(
+      `Erreur lors de l'appel du workflow n8n (${response.status}): ${errorBody}`
+    );
+  }
+
+  return { success: true, removed: quotes.length };
+};
+
+const removeQuotesFromCache = (quotes = []) => {
+  if (!Array.isArray(quotes) || quotes.length === 0) {
+    return;
+  }
+
+  const ids = new Set();
+  const rowNumbers = new Set();
+
+  quotes.forEach((quote) => {
+    if (quote?.id) {
+      ids.add(String(quote.id));
+    }
+
+    if (typeof quote?.rowNumber === "number") {
+      rowNumbers.add(quote.rowNumber);
+    }
+  });
+
+  cachedQuotes = cachedQuotes.filter((quote) => {
+    const matchesId = quote?.id && ids.has(String(quote.id));
+    const matchesRow = typeof quote?.rowNumber === "number" && rowNumbers.has(quote.rowNumber);
+    return !matchesId && !matchesRow;
+  });
+
+  lastFetchTimestamp = 0;
 };
 
 const sendQuoteToContentScript = (payload) =>
@@ -280,6 +342,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       })
       .catch((error) => {
         console.error("[Background] Erreur lors de la récupération des devis", error);
+        sendResponse({ success: false, error: error.message });
+      });
+
+    return true;
+  }
+
+  if (message?.action === "removeUsedQuotes") {
+    const quotesToRemove = Array.isArray(message?.quotes) ? message.quotes : [];
+
+    triggerDeleteWorkflow(quotesToRemove)
+      .then((result) => {
+        removeQuotesFromCache(quotesToRemove);
+        sendResponse({ success: true, removed: quotesToRemove.length, workflow: result });
+      })
+      .catch((error) => {
+        console.error(
+          "[Background] Erreur lors de la notification du workflow n8n pour suppression",
+          error
+        );
         sendResponse({ success: false, error: error.message });
       });
 

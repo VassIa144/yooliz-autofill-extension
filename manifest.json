@@ -10,7 +10,8 @@
   "permissions": ["storage"],
   "host_permissions": [
     "https://*.yooliz.com/liste-des-devis/creer-un-devis/*",
-    "https://sheets.googleapis.com/*"
+    "https://sheets.googleapis.com/*",
+    "https://n8n.example.com/*"
   ],
   "background": {
     "service_worker": "background.js"
