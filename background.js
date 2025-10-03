@@ -2,7 +2,7 @@ const GOOGLE_SHEETS_API_KEY = "AIzaSyAfy-Lq0veFj7v2oUZXSZbdOSn8pdOOTmY";
 const SPREADSHEET_ID = "1wGfG-tNnxo17dnaQItdvAmrmcYm-2ofRcKmFQ2CI198";
 const QUOTES_RANGE = "Sheet1!A1:Z";
 const CACHE_DURATION_MS = 5 * 60 * 1000;
-const N8N_DELETE_WORKFLOW_URL = "https://n8n.example.com/webhook/delete-used-quotes";
+const SHEET_METADATA_CACHE_DURATION_MS = 60 * 60 * 1000;
 
 let registeredYoolizTabId = null;
 
@@ -74,6 +74,8 @@ restoreRegisteredTabId();
 
 let cachedQuotes = [];
 let lastFetchTimestamp = 0;
+let cachedSheetId = null;
+let sheetIdFetchedAt = 0;
 
 const HEADER_ALIASES = {
   id: ["id", "numero", "numero_devis", "num_devis", "devis", "id_devis"],
@@ -195,37 +197,149 @@ const getQuotes = async () => {
   return { quotes, fromCache: false };
 };
 
-const ensureDeleteWorkflowConfigured = () => {
-  if (!N8N_DELETE_WORKFLOW_URL) {
-    throw new Error(
-      "Le webhook n8n de suppression n'est pas configuré. Mettez à jour N8N_DELETE_WORKFLOW_URL dans background.js."
-    );
+const getSheetTitleFromRange = () => {
+  if (!QUOTES_RANGE) {
+    return null;
   }
+
+  const [rawSheetTitle] = QUOTES_RANGE.split("!");
+
+  if (!rawSheetTitle) {
+    return null;
+  }
+
+  const trimmed = rawSheetTitle.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  if (trimmed.startsWith("'") && trimmed.endsWith("'") && trimmed.length >= 2) {
+    return trimmed.slice(1, -1);
+  }
+
+  return trimmed;
 };
 
-const triggerDeleteWorkflow = async (quotes = []) => {
-  ensureDeleteWorkflowConfigured();
-
-  if (!Array.isArray(quotes) || quotes.length === 0) {
-    return { success: true, removed: 0 };
+const fetchSheetId = async () => {
+  if (!GOOGLE_SHEETS_API_KEY || !SPREADSHEET_ID) {
+    throw new Error("La configuration Google Sheets est incomplète.");
   }
 
-  const response = await fetch(N8N_DELETE_WORKFLOW_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ quotes }),
+  const sheetTitle = getSheetTitleFromRange();
+
+  if (!sheetTitle) {
+    throw new Error(
+      "Impossible de déterminer l'onglet cible à partir de QUOTES_RANGE."
+    );
+  }
+
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}?fields=sheets.properties(sheetId,title)&key=${GOOGLE_SHEETS_API_KEY}`;
+
+  const response = await fetch(url, {
+    method: "GET",
   });
 
   if (!response.ok) {
     const errorBody = await response.text();
     throw new Error(
-      `Erreur lors de l'appel du workflow n8n (${response.status}): ${errorBody}`
+      `Erreur lors de la récupération des métadonnées de la feuille (${response.status}): ${errorBody}`
     );
   }
 
-  return { success: true, removed: quotes.length };
+  const data = await response.json();
+  const sheets = Array.isArray(data?.sheets) ? data.sheets : [];
+
+  const matchingSheet = sheets.find((sheet) => {
+    const title = sheet?.properties?.title;
+    return typeof title === "string" && title === sheetTitle;
+  });
+
+  const sheetId = matchingSheet?.properties?.sheetId;
+
+  if (typeof sheetId !== "number") {
+    throw new Error(
+      `Aucun onglet nommé « ${sheetTitle} » n'a été trouvé dans la feuille Google Sheets.`
+    );
+  }
+
+  cachedSheetId = sheetId;
+  sheetIdFetchedAt = Date.now();
+
+  return sheetId;
+};
+
+const getSheetId = async () => {
+  const now = Date.now();
+
+  if (
+    typeof cachedSheetId === "number" &&
+    now - sheetIdFetchedAt < SHEET_METADATA_CACHE_DURATION_MS
+  ) {
+    return cachedSheetId;
+  }
+
+  return fetchSheetId();
+};
+
+const deleteRowsFromSheet = async (rowNumbers = []) => {
+  const normalizedRows = rowNumbers
+    .map((rowNumber) => Number(rowNumber))
+    .filter((rowNumber) => Number.isInteger(rowNumber) && rowNumber > 1);
+
+  const uniqueRows = Array.from(new Set(normalizedRows));
+
+  if (uniqueRows.length === 0) {
+    return { success: true, removed: 0 };
+  }
+
+  const sheetId = await getSheetId();
+
+  const requests = uniqueRows
+    .sort((a, b) => b - a)
+    .map((rowNumber) => ({
+      deleteDimension: {
+        range: {
+          sheetId,
+          dimension: "ROWS",
+          startIndex: rowNumber - 1,
+          endIndex: rowNumber,
+        },
+      },
+    }));
+
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}:batchUpdate?key=${GOOGLE_SHEETS_API_KEY}`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ requests }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(
+      `Erreur lors de la suppression des lignes Google Sheets (${response.status}): ${errorBody}`
+    );
+  }
+
+  return { success: true, removed: uniqueRows.length };
+};
+
+const deleteQuotesFromSheet = async (quotes = []) => {
+  if (!Array.isArray(quotes) || quotes.length === 0) {
+    return { success: true, removed: 0 };
+  }
+
+  const rowNumbers = quotes.map((quote) => quote?.rowNumber);
+
+  if (rowNumbers.length === 0) {
+    return { success: true, removed: 0 };
+  }
+
+  return deleteRowsFromSheet(rowNumbers);
 };
 
 const removeQuotesFromCache = (quotes = []) => {
@@ -351,14 +465,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.action === "removeUsedQuotes") {
     const quotesToRemove = Array.isArray(message?.quotes) ? message.quotes : [];
 
-    triggerDeleteWorkflow(quotesToRemove)
+    deleteQuotesFromSheet(quotesToRemove)
       .then((result) => {
         removeQuotesFromCache(quotesToRemove);
-        sendResponse({ success: true, removed: quotesToRemove.length, workflow: result });
+        sendResponse({ success: true, removed: result.removed });
       })
       .catch((error) => {
         console.error(
-          "[Background] Erreur lors de la notification du workflow n8n pour suppression",
+          "[Background] Erreur lors de la suppression des lignes Google Sheets",
           error
         );
         sendResponse({ success: false, error: error.message });

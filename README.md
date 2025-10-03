@@ -6,11 +6,7 @@ Cette extension Chrome permet de récupérer la liste des devis depuis Google Sh
 
 1. Les constantes `GOOGLE_SHEETS_API_KEY`, `SPREADSHEET_ID` et `QUOTES_RANGE` sont renseignées dans `background.js`.
    Adaptez-les si la source Google Sheets change.
-2. Configurez `N8N_DELETE_WORKFLOW_URL` dans `background.js` avec l’URL du webhook du workflow n8n
-   chargé de supprimer les lignes Google Sheets correspondant aux devis utilisés.
-   * Ajoutez le domaine associé à `N8N_DELETE_WORKFLOW_URL` dans `host_permissions` de `manifest.json`
-     pour autoriser l’appel réseau.
-3. Rechargez l’extension dans Chrome après toute modification.
+2. Rechargez l’extension dans Chrome après toute modification.
 
 ## Utilisation
 
@@ -19,3 +15,6 @@ Cette extension Chrome permet de récupérer la liste des devis depuis Google Sh
 3. Cliquez sur « Remplir » pour injecter les informations du devis sélectionné dans le formulaire.
 
 Les appels Google Sheets sont mis en cache pendant 5 minutes pour limiter la consommation de l’API.
+
+Lorsqu’un devis fournisseur est supprimé via « Supprimer les devis utilisés », l’extension appelle directement
+l’API Google Sheets afin d’effacer les lignes correspondantes.
