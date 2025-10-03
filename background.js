@@ -4,6 +4,50 @@ const QUOTES_RANGE = "Sheet1!A1:Z";
 const CACHE_DURATION_MS = 5 * 60 * 1000;
 const SHEET_METADATA_CACHE_DURATION_MS = 60 * 60 * 1000;
 const SHEETS_WRITE_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
+const OAUTH_CLIENT_ID_PLACEHOLDER =
+  "REPLACE_WITH_OAUTH_CLIENT_ID.apps.googleusercontent.com";
+
+const getConfiguredOAuthClientId = () => {
+  try {
+    const manifest = chrome?.runtime?.getManifest
+      ? chrome.runtime.getManifest()
+      : null;
+    const manifestClientId = manifest?.oauth2?.client_id;
+    return typeof manifestClientId === "string" ? manifestClientId.trim() : "";
+  } catch (error) {
+    console.warn("[Background] Impossible de lire la configuration OAuth", error);
+    return "";
+  }
+};
+
+const normalizeIdentityErrorMessage = (message) => {
+  if (!message) {
+    return "";
+  }
+
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes("bad client id")) {
+    return (
+      "Client OAuth Google invalide. Vérifiez que manifest.json contient " +
+      "l'identifiant OAuth 2.0 exact fourni par Google Cloud."
+    );
+  }
+
+  if (normalized.includes("redirect_uri")) {
+    const extensionId = chrome?.runtime?.id;
+    const redirectUri = extensionId
+      ? `https://${extensionId}.chromiumapp.org/`
+      : "https://<extension-id>.chromiumapp.org/";
+
+    return (
+      "Configuration OAuth incomplète. Ajoutez l'URL de redirection " +
+      `${redirectUri} au client OAuth Google.`
+    );
+  }
+
+  return message;
+};
 
 const ensureSheetsOAuthConfigured = () => {
   if (!chrome?.identity?.getAuthToken) {
@@ -11,6 +55,22 @@ const ensureSheetsOAuthConfigured = () => {
       `La suppression des devis nécessite la permission Chrome Identity et un client OAuth valide (${SHEETS_WRITE_SCOPE}). Vérifiez la configuration dans manifest.json.`
     );
   }
+
+  const clientId = getConfiguredOAuthClientId();
+
+  if (!clientId) {
+    throw new Error(
+      "Client OAuth Google manquant. Déclarez un identifiant OAuth 2.0 valide dans manifest.json."
+    );
+  }
+
+  if (clientId === OAUTH_CLIENT_ID_PLACEHOLDER) {
+    throw new Error(
+      "Client OAuth Google non configuré. Remplacez l'identifiant par défaut dans manifest.json par celui fourni par Google Cloud."
+    );
+  }
+
+  return clientId;
 };
 
 const getSheetsAuthToken = ({ interactive = false } = {}) =>
@@ -21,9 +81,10 @@ const getSheetsAuthToken = ({ interactive = false } = {}) =>
       { interactive, scopes: [SHEETS_WRITE_SCOPE] },
       (token) => {
         if (chrome.runtime.lastError || !token) {
-          const message =
+          const message = normalizeIdentityErrorMessage(
             chrome.runtime.lastError?.message ||
-            "Impossible d'obtenir un jeton OAuth pour Google Sheets.";
+              "Impossible d'obtenir un jeton OAuth pour Google Sheets."
+          );
           reject(new Error(message));
           return;
         }

@@ -15,6 +15,19 @@ Cette extension Chrome permet de récupérer la liste des devis depuis Google Sh
    feuille. Validez-la pour que la suppression des lignes fonctionne.
 4. Rechargez l’extension dans Chrome après toute modification.
 
+### Dépannage OAuth
+
+Si un message mentionne un « client OAuth invalide » ou « bad client id » dans le popup :
+
+1. Vérifiez que le champ `oauth2.client_id` du `manifest.json` contient bien l’identifiant
+   complet se terminant par `.apps.googleusercontent.com` fourni par Google Cloud (et non
+   la valeur par défaut du dépôt).
+2. Dans la console Google Cloud, ouvrez la configuration OAuth et ajoutez l’URL de
+   redirection `https://<ID_DE_L_EXTENSION>.chromiumapp.org/` (remplacez `<ID_DE_L_EXTENSION>`
+   par l’identifiant de l’extension visible dans `chrome://extensions`).
+3. Rechargez l’extension puis relancez la suppression. Chrome doit éventuellement afficher
+   la fenêtre d’autorisation si nécessaire.
+
 ## Utilisation
 
 1. Ouvrez la page Yooliz « Créer un devis ».
