@@ -1,0 +1,241 @@
+:root {
+  color-scheme: light dark;
+  font-family: "Inter", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f5f5f5;
+  color: #1a1a1a;
+}
+
+body {
+  margin: 0;
+  padding: 16px;
+  min-width: 260px;
+}
+
+.popup {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.popup__title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.popup__status { 
+  margin: 0;
+  min-height: 1.2rem;
+  font-size: 0.85rem;
+  color: #495057;
+}
+
+.popup__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.popup__clear-button {
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #0d6efd;
+  background: transparent;
+  border: 1px solid rgba(13, 110, 253, 0.4);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.popup__clear-button:hover,
+.popup__clear-button:focus {
+  background: rgba(13, 110, 253, 0.08);
+  outline: none;
+}
+
+.popup__clear-button:disabled {
+  color: #6c757d;
+  border-color: rgba(108, 117, 125, 0.4);
+  cursor: not-allowed;
+  background: transparent;
+}
+
+.popup__status--loading {
+  color: #0d6efd;
+}
+
+.popup__status--error {
+  color: #dc3545;
+}
+
+.popup__status--success {
+  color: #198754;
+}
+
+.popup__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.popup__list-item {
+  background: #ffffff;
+  border-radius: 8px;
+  border: 1px solid #dee2e6;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
+}
+
+.popup__list-item--loading {
+  border-color: #0d6efd;
+  box-shadow: 0 2px 6px rgba(13, 110, 253, 0.15);
+}
+
+.popup__list-item:hover,
+.popup__list-item:focus-within {
+  border-color: #0d6efd;
+  box-shadow: 0 2px 6px rgba(13, 110, 253, 0.15);
+}
+
+.popup__list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.popup__list-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: inherit;
+}
+
+
+.popup__list-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.popup__list-filled-indicator {
+  display: none;
+  margin-left: auto;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #198754;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.popup__list-filled-indicator--visible {
+  display: inline-flex;
+  align-items: center;
+}
+
+.popup__list-meta {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #6c757d;
+}
+
+.popup__list-meta--secondary {
+  font-size: 0.75rem;
+}
+
+.popup__list-progress {
+  position: relative;
+  width: 72px;
+  height: 4px;
+  border-radius: 999px;
+  background: #e9ecef;
+  overflow: hidden;
+  display: none;
+}
+
+.popup__list-item--filled {
+  background: rgba(25, 135, 84, 0.08);
+  border-color: rgba(25, 135, 84, 0.4);
+}
+
+.popup__list-item--filled .popup__list-title {
+  color: #146c43;
+}
+
+.popup__list-item--filled .popup__list-meta {
+  color: #52735f;
+}
+
+.popup__list-action--filled,
+.popup__list-action--filled:disabled {
+  background: rgba(25, 135, 84, 0.16);
+  color: #146c43;
+  cursor: default;
+  opacity: 1;
+}
+
+.popup__list-action--filled:hover,
+.popup__list-action--filled:focus,
+.popup__list-action--filled:active {
+  background: rgba(25, 135, 84, 0.16);
+}
+
+.popup__list-progress::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(13, 110, 253, 0.2), #0d6efd, rgba(13, 110, 253, 0.2));
+  animation: popupProgress 1.2s linear infinite;
+}
+
+.popup__list-progress--visible {
+  display: block;
+}
+
+@keyframes popupProgress {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.popup__list-action {
+  align-self: flex-start;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #ffffff;
+  background: #0d6efd;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.popup__list-action:disabled {
+  cursor: not-allowed;
+  background: #6c757d;
+  opacity: 0.8;
+}
+
+.popup__list-action:hover,
+.popup__list-action:focus {
+  background: #0b5ed7;
+  outline: none;
+}
+
+.popup__list-action:active {
+  background: #0a53be;
+}

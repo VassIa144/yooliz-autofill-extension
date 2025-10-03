@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Devis Yooliz</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="popup" aria-live="polite">
+      <h1 class="popup__title">Liste des devis</h1>
+      <p id="status" class="popup__status" role="status"></p>
+      <div class="popup__actions">
+        <button
+          id="clear-filled"
+          class="popup__clear-button"
+          type="button"
+          hidden
+        >
+          Supprimer les devis utilisés
+        </button>
+      </div>
+      <ul id="quotes-list" class="popup__list" aria-label="Devis disponibles"></ul>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>
