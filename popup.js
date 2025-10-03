@@ -5,6 +5,10 @@ const storage = chrome?.storage?.local;
 const filledQuotes = new Set();
 const hiddenFilledQuotes = new Set();
 let currentQuotes = [];
+let refreshIntervalId = null;
+let isAutoRefreshing = false;
+
+const REFRESH_INTERVAL_MS = 5000;
 
 const STORAGE_KEYS = {
   filledQuotes: "yoolizFilledQuotes",
@@ -139,6 +143,63 @@ const countFilledQuotesInView = () =>
 
     return filledQuotes.has(key) ? count + 1 : count;
   }, 0);
+
+const pruneStateForCurrentQuotes = () => {
+  const validKeys = new Set(currentQuotes.map((quote) => getQuoteKey(quote)));
+  let stateChanged = false;
+
+  for (const key of Array.from(filledQuotes)) {
+    if (!validKeys.has(key)) {
+      filledQuotes.delete(key);
+      stateChanged = true;
+    }
+  }
+
+  for (const key of Array.from(hiddenFilledQuotes)) {
+    if (!validKeys.has(key)) {
+      hiddenFilledQuotes.delete(key);
+      stateChanged = true;
+    }
+  }
+
+  if (stateChanged) {
+    persistPopupState();
+  }
+};
+
+const buildQuoteSignature = (quote = {}) =>
+  [
+    getQuoteKey(quote),
+    quote.rowNumber ?? "",
+    quote.make ?? "",
+    quote.model ?? "",
+    quote.engine ?? "",
+    quote.fuelType ?? "",
+    quote.usageType ?? "",
+    quote.vehicleType ?? "",
+    quote.vehicleCategory ?? "",
+  ].join("|");
+
+const haveQuotesChanged = (nextQuotes = []) => {
+  if (!Array.isArray(nextQuotes)) {
+    return false;
+  }
+
+  if (currentQuotes.length !== nextQuotes.length) {
+    return true;
+  }
+
+  const currentSignatures = currentQuotes.map((quote) => buildQuoteSignature(quote)).sort();
+  const nextSignatures = nextQuotes.map((quote) => buildQuoteSignature(quote)).sort();
+
+  for (let index = 0; index < currentSignatures.length; index += 1) {
+    if (currentSignatures[index] !== nextSignatures[index]) {
+      return true;
+    }
+  }
+
+  return false;
+};
 
 const updateClearFilledVisibility = () => {
   if (!clearFilledButton) {
@@ -342,6 +403,7 @@ const renderQuotes = () => {
 
 const setQuotes = (quotes = []) => {
   currentQuotes = Array.isArray(quotes) ? [...quotes] : [];
+  pruneStateForCurrentQuotes();
   renderQuotes();
 };
 
@@ -362,11 +424,20 @@ const notifyRemovedQuotes = async (quotes) => {
   return response;
 };
 
-const loadQuotes = async () => {
-  setStatus("Chargement des devis…", "loading");
+const loadQuotes = async ({
+  forceRefresh = false,
+  silent = false,
+  suppressStatusUpdate = false,
+} = {}) => {
+  if (!silent) {
+    setStatus("Chargement des devis…", "loading");
+  }
 
   try {
-    const response = await sendRuntimeMessage({ action: "getQuotes" });
+    const response = await sendRuntimeMessage({
+      action: "getQuotes",
+      forceRefresh,
+    });
 
     if (!response?.success) {
       throw new Error(response?.error || "Réponse invalide du service");
@@ -376,29 +447,59 @@ const loadQuotes = async () => {
 
     if (quotes.length === 0) {
       setQuotes([]);
-      setStatus("Aucun devis disponible.");
-      return;
+      if (!suppressStatusUpdate) {
+        setStatus("Aucun devis disponible.");
+      }
+      return quotes;
     }
 
+    const quotesChanged = haveQuotesChanged(quotes);
     setQuotes(quotes);
 
-    const statusMessage = response.fromCache
-      ? "Devis chargés (cache)."
-      : "Devis chargés depuis Google Sheets.";
+    if (!silent) {
+      const statusMessage = response.fromCache
+        ? "Devis chargés (cache)."
+        : "Devis chargés depuis Google Sheets.";
 
-    setStatus(statusMessage, "success");
+      setStatus(statusMessage, "success");
+    } else if (quotesChanged && !suppressStatusUpdate) {
+      setStatus("Liste des devis mise à jour.", "success");
+    }
+
+    return quotes;
   } catch (error) {
     console.error("[Popup] Échec du chargement des devis", error);
     setStatus("Erreur lors de la récupération des devis.", "error");
+    return [];
   }
 };
 
 const initializePopup = async () => {
   await restorePopupState();
-  await loadQuotes();
+  await loadQuotes({ forceRefresh: true });
+  if (refreshIntervalId !== null) {
+    clearInterval(refreshIntervalId);
+  }
+  refreshIntervalId = setInterval(() => {
+    if (isAutoRefreshing) {
+      return;
+    }
+
+    isAutoRefreshing = true;
+    loadQuotes({ forceRefresh: true, silent: true }).finally(() => {
+      isAutoRefreshing = false;
+    });
+  }, REFRESH_INTERVAL_MS);
 };
 
 initializePopup();
+
+window.addEventListener("unload", () => {
+  if (refreshIntervalId !== null) {
+    clearInterval(refreshIntervalId);
+    refreshIntervalId = null;
+  }
+});
 
 if (clearFilledButton) {
   clearFilledButton.addEventListener("click", async () => {
@@ -434,6 +535,7 @@ if (clearFilledButton) {
 
     try {
       await notifyRemovedQuotes(removalPayload);
+      await loadQuotes({ forceRefresh: true, silent: true, suppressStatusUpdate: true });
       const message =
         filledCount === 1
           ? "Le devis utilisé a été retiré de la liste."

@@ -181,11 +181,11 @@ const fetchQuotesFromSheet = async () => {
   return buildQuotesFromSheetData(data.values);
 };
 
-const getQuotes = async () => {
+const getQuotes = async ({ forceRefresh = false } = {}) => {
   const now = Date.now();
   const isCacheValid = now - lastFetchTimestamp < CACHE_DURATION_MS;
 
-  if (isCacheValid && cachedQuotes.length > 0) {
+  if (!forceRefresh && isCacheValid && cachedQuotes.length > 0) {
     return { quotes: cachedQuotes, fromCache: true };
   }
 
@@ -450,7 +450,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message?.action === "getQuotes") {
-    getQuotes()
+    const forceRefresh = Boolean(message?.forceRefresh);
+
+    getQuotes({ forceRefresh })
       .then((result) => {
         sendResponse({ success: true, quotes: result.quotes, fromCache: result.fromCache });
       })

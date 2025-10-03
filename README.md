@@ -12,9 +12,13 @@ Cette extension Chrome permet de récupérer la liste des devis depuis Google Sh
 
 1. Ouvrez la page Yooliz « Créer un devis ».
 2. Ouvrez le popup de l’extension : la liste des devis est chargée depuis Google Sheets.
+   L’interface se synchronise automatiquement toutes les quelques secondes pour
+   refléter les ajouts, suppressions ou modifications dans le fichier Google Sheets.
 3. Cliquez sur « Remplir » pour injecter les informations du devis sélectionné dans le formulaire.
 
-Les appels Google Sheets sont mis en cache pendant 5 minutes pour limiter la consommation de l’API.
+Lorsque Google Sheets ne contient aucune ligne fournisseur, aucun devis n’est
+proposé dans l’interface. Dès qu’une nouvelle ligne est ajoutée dans la feuille,
+elle apparaît automatiquement dans la liste sans recharger l’extension.
 
 Lorsqu’un devis fournisseur est supprimé via « Supprimer les devis utilisés », l’extension appelle directement
 l’API Google Sheets afin d’effacer les lignes correspondantes.
