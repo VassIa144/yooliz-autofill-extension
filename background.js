@@ -6,10 +6,6 @@ const SHEET_METADATA_CACHE_DURATION_MS = 60 * 60 * 1000;
 const SHEETS_WRITE_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 const OAUTH_CLIENT_ID_PLACEHOLDER =
   "REPLACE_WITH_OAUTH_CLIENT_ID.apps.googleusercontent.com";
-const OAUTH_TOKEN_STORAGE_KEY = "googleSheetsOAuthTokens";
-const TOKEN_EXPIRY_MARGIN_MS = 60 * 1000;
-const GOOGLE_AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
-const GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 
 const getConfiguredOAuthClientId = () => {
   try {
@@ -58,7 +54,7 @@ const normalizeOAuthErrorMessage = (message) => {
 };
 
 const ensureSheetsOAuthConfigured = () => {
-  if (!chrome?.identity?.launchWebAuthFlow) {
+  if (!chrome?.identity?.getAuthToken) {
     throw new Error(
       `La suppression des devis nécessite la permission Chrome Identity et un client OAuth valide (${SHEETS_WRITE_SCOPE}). Vérifiez la configuration dans manifest.json.`
     );
@@ -81,52 +77,53 @@ const ensureSheetsOAuthConfigured = () => {
   return clientId;
 };
 
-const readStoredOAuthTokens = () =>
-  new Promise((resolve) => {
-    chrome.storage?.local?.get
-      ? chrome.storage.local.get([OAUTH_TOKEN_STORAGE_KEY], (items) => {
-          if (chrome.runtime.lastError) {
-            console.warn(
-              "[Background] Lecture des jetons OAuth impossible",
-              chrome.runtime.lastError
-            );
-            resolve(null);
-            return;
-          }
-
-          resolve(items?.[OAUTH_TOKEN_STORAGE_KEY] || null);
-        })
-      : resolve(null);
-  });
-
-const writeStoredOAuthTokens = (tokens) =>
+const getIdentityAccessToken = ({ interactive = false } = {}) =>
   new Promise((resolve, reject) => {
-    if (!chrome?.storage?.local?.set) {
-      resolve();
+    try {
+      ensureSheetsOAuthConfigured();
+    } catch (configError) {
+      reject(configError);
       return;
     }
 
-    chrome.storage.local.set({ [OAUTH_TOKEN_STORAGE_KEY]: tokens }, () => {
+    if (!chrome?.identity?.getAuthToken) {
+      reject(
+        new Error(
+          "Chrome Identity n'est pas disponible. Assurez-vous que l'extension dispose de la permission 'identity'."
+        )
+      );
+      return;
+    }
+
+    chrome.identity.getAuthToken({ interactive }, (token) => {
       if (chrome.runtime.lastError) {
-        reject(chrome.runtime.lastError);
+        const message = normalizeOAuthErrorMessage(
+          chrome.runtime.lastError.message || "Échec de l'authentification Google."
+        );
+        reject(new Error(message));
         return;
       }
 
-      resolve();
+      if (!token) {
+        reject(new Error("Authentification Google Sheets requise."));
+        return;
+      }
+
+      resolve({ accessToken: token, tokenType: "Bearer" });
     });
   });
 
-const clearStoredOAuthTokens = () =>
+const removeCachedIdentityToken = (token) =>
   new Promise((resolve) => {
-    if (!chrome?.storage?.local?.remove) {
+    if (!token || !chrome?.identity?.removeCachedAuthToken) {
       resolve();
       return;
     }
 
-    chrome.storage.local.remove(OAUTH_TOKEN_STORAGE_KEY, () => {
+    chrome.identity.removeCachedAuthToken({ token }, () => {
       if (chrome.runtime.lastError) {
         console.warn(
-          "[Background] Impossible d'effacer les jetons OAuth",
+          "[Background] Impossible d'invalider le jeton OAuth",
           chrome.runtime.lastError
         );
       }
@@ -135,274 +132,20 @@ const clearStoredOAuthTokens = () =>
     });
   });
 
-const base64UrlEncode = (arrayBuffer) => {
-  const uint8Array =
-    arrayBuffer instanceof Uint8Array ? arrayBuffer : new Uint8Array(arrayBuffer);
-
-  let binary = "";
-  uint8Array.forEach((byte) => {
-    binary += String.fromCharCode(byte);
-  });
-
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-};
-
-const generateRandomBytes = (length = 32) => {
-  const buffer = new Uint8Array(length);
-  crypto.getRandomValues(buffer);
-  return buffer;
-};
-
-const generateCodeVerifier = () => base64UrlEncode(generateRandomBytes(64));
-
-const generateState = () => base64UrlEncode(generateRandomBytes(32));
-
-const generateCodeChallenge = async (codeVerifier) => {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(codeVerifier);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return base64UrlEncode(new Uint8Array(digest));
-};
-
-const parseTokenPayload = (payload, fallbackRefreshToken = null) => {
-  if (!payload?.access_token) {
-    throw new Error("Réponse OAuth invalide : access_token manquant.");
+const shouldRetryInteractively = (error) => {
+  if (!error?.message) {
+    return false;
   }
 
-  const expiresIn = Number(payload.expires_in);
-  const expiresAt = Date.now() + (Number.isFinite(expiresIn) ? expiresIn : 3600) * 1000;
+  const normalized = error.message.toLowerCase();
 
-  return {
-    accessToken: payload.access_token,
-    tokenType: payload.token_type || "Bearer",
-    expiresAt,
-    refreshToken: payload.refresh_token || fallbackRefreshToken || null,
-    scope: payload.scope || SHEETS_WRITE_SCOPE,
-  };
-};
-
-const exchangeAuthCodeForTokens = async ({
-  code,
-  codeVerifier,
-  redirectUri,
-  clientId,
-}) => {
-  const body = new URLSearchParams({
-    code,
-    client_id: clientId,
-    code_verifier: codeVerifier,
-    redirect_uri: redirectUri,
-    grant_type: "authorization_code",
-  });
-
-  const response = await fetch(GOOGLE_TOKEN_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body,
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.json().catch(() => null);
-    const message =
-      errorBody?.error_description ||
-      errorBody?.error ||
-      `Échec de l'échange du code OAuth (${response.status}).`;
-    throw new Error(normalizeOAuthErrorMessage(message));
-  }
-
-  const payload = await response.json();
-  return parseTokenPayload(payload);
-};
-
-const refreshAccessToken = async ({ clientId, refreshToken }) => {
-  const body = new URLSearchParams({
-    client_id: clientId,
-    refresh_token: refreshToken,
-    grant_type: "refresh_token",
-  });
-
-  const response = await fetch(GOOGLE_TOKEN_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body,
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.json().catch(() => null);
-    const errorMessage =
-      errorBody?.error_description ||
-      errorBody?.error ||
-      `Échec du rafraîchissement du jeton OAuth (${response.status}).`;
-    throw new Error(normalizeOAuthErrorMessage(errorMessage));
-  }
-
-  const payload = await response.json();
-  return parseTokenPayload(payload, refreshToken);
-};
-
-const getRedirectUri = () => {
-  try {
-    return chrome.identity.getRedirectURL("oauth2");
-  } catch (error) {
-    console.warn("[Background] Utilisation du redirect URL par défaut", error);
-    return chrome.identity.getRedirectURL();
-  }
-};
-
-const createInteractionRequiredError = (message) => {
-  const error = new Error(message);
-  error.code = "OAUTH_INTERACTION_REQUIRED";
-  return error;
-};
-
-const needsInteractiveAuthorization = (error) =>
-  error?.code === "OAUTH_INTERACTION_REQUIRED";
-
-let interactiveAuthPromise = null;
-
-const runInteractiveOAuthFlow = async (clientId) => {
-  if (interactiveAuthPromise) {
-    return interactiveAuthPromise;
-  }
-
-  interactiveAuthPromise = (async () => {
-    const redirectUri = getRedirectUri();
-    const codeVerifier = generateCodeVerifier();
-    const codeChallenge = await generateCodeChallenge(codeVerifier);
-    const state = generateState();
-
-    const authUrl = new URL(GOOGLE_AUTH_ENDPOINT);
-    authUrl.searchParams.set("client_id", clientId);
-    authUrl.searchParams.set("response_type", "code");
-    authUrl.searchParams.set("redirect_uri", redirectUri);
-    authUrl.searchParams.set("scope", SHEETS_WRITE_SCOPE);
-    authUrl.searchParams.set("access_type", "offline");
-    authUrl.searchParams.set("prompt", "consent");
-    authUrl.searchParams.set("include_granted_scopes", "true");
-    authUrl.searchParams.set("state", state);
-    authUrl.searchParams.set("code_challenge", codeChallenge);
-    authUrl.searchParams.set("code_challenge_method", "S256");
-
-    const redirectResponse = await new Promise((resolve, reject) => {
-      chrome.identity.launchWebAuthFlow(
-        {
-          url: authUrl.toString(),
-          interactive: true,
-        },
-        (redirectUrl) => {
-          if (chrome.runtime.lastError) {
-            reject(
-              new Error(
-                normalizeOAuthErrorMessage(
-                  chrome.runtime.lastError.message ||
-                    "Échec de l'authentification Google."
-                )
-              )
-            );
-            return;
-          }
-
-          if (!redirectUrl) {
-            reject(new Error("Réponse OAuth vide."));
-            return;
-          }
-
-          resolve(redirectUrl);
-        }
-      );
-    });
-
-    let parsedUrl;
-
-    try {
-      parsedUrl = new URL(redirectResponse);
-    } catch (error) {
-      throw new Error("Réponse OAuth invalide.");
-    }
-
-    const returnedState = parsedUrl.searchParams.get("state");
-
-    if (!returnedState || returnedState !== state) {
-      throw new Error("Réponse OAuth inattendue (state incohérent).");
-    }
-
-    const errorParam = parsedUrl.searchParams.get("error");
-
-    if (errorParam) {
-      throw new Error(normalizeOAuthErrorMessage(errorParam));
-    }
-
-    const authCode = parsedUrl.searchParams.get("code");
-
-    if (!authCode) {
-      throw new Error("Code d'autorisation Google absent de la réponse OAuth.");
-    }
-
-    const tokens = await exchangeAuthCodeForTokens({
-      code: authCode,
-      codeVerifier,
-      redirectUri,
-      clientId,
-    });
-
-    await writeStoredOAuthTokens(tokens);
-
-    return tokens;
-  })()
-    .catch(async (error) => {
-      await clearStoredOAuthTokens();
-      throw error;
-    })
-    .finally(() => {
-      interactiveAuthPromise = null;
-    });
-
-  return interactiveAuthPromise;
-};
-
-const getValidAccessToken = async ({ interactive = false } = {}) => {
-  const clientId = ensureSheetsOAuthConfigured();
-  const storedTokens = await readStoredOAuthTokens();
-  const now = Date.now();
-
-  if (
-    storedTokens?.accessToken &&
-    typeof storedTokens?.expiresAt === "number" &&
-    storedTokens.expiresAt - TOKEN_EXPIRY_MARGIN_MS > now
-  ) {
-    return storedTokens;
-  }
-
-  if (storedTokens?.refreshToken) {
-    try {
-      const refreshed = await refreshAccessToken({
-        clientId,
-        refreshToken: storedTokens.refreshToken,
-      });
-      await writeStoredOAuthTokens(refreshed);
-      return refreshed;
-    } catch (error) {
-      console.warn("[Background] Rafraîchissement OAuth échoué", error);
-      await clearStoredOAuthTokens();
-
-      if (!interactive) {
-        throw createInteractionRequiredError(
-          normalizeOAuthErrorMessage(error?.message) ||
-            "Authentification Google Sheets requise."
-        );
-      }
-    }
-  }
-
-  if (!interactive) {
-    throw createInteractionRequiredError("Authentification Google Sheets requise.");
-  }
-
-  return runInteractiveOAuthFlow(clientId);
+  return (
+    normalized.includes("interaction") ||
+    normalized.includes("consent") ||
+    normalized.includes("login") ||
+    normalized.includes("authentification") ||
+    normalized.includes("authorization")
+  );
 };
 
 const performAuthorizedSheetsRequest = async ({
@@ -415,9 +158,9 @@ const performAuthorizedSheetsRequest = async ({
     let tokens;
 
     try {
-      tokens = await getValidAccessToken({ interactive });
+      tokens = await getIdentityAccessToken({ interactive });
     } catch (tokenError) {
-      if (!interactive && needsInteractiveAuthorization(tokenError)) {
+      if (!interactive && shouldRetryInteractively(tokenError)) {
         return attempt(true);
       }
 
@@ -434,7 +177,7 @@ const performAuthorizedSheetsRequest = async ({
     });
 
     if (response.status === 401) {
-      await clearStoredOAuthTokens();
+      await removeCachedIdentityToken(tokens.accessToken);
 
       if (!interactive) {
         return attempt(true);

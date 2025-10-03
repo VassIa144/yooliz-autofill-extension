@@ -6,13 +6,11 @@ Cette extension Chrome permet de récupérer la liste des devis depuis Google Sh
 
 1. Les constantes `GOOGLE_SHEETS_API_KEY`, `SPREADSHEET_ID` et `QUOTES_RANGE` sont renseignées dans `background.js`.
    Adaptez-les si la source Google Sheets change.
-2. Créez un identifiant client OAuth 2.0 de type « Application Web » dans Google Cloud
-   (ou mettez à jour un identifiant existant) puis remplacez
-   `REPLACE_WITH_OAUTH_CLIENT_ID.apps.googleusercontent.com` dans `manifest.json` par
-   la valeur exacte fournie par Google. Ajoutez l’URL de redirection
-   `https://<ID_DE_L_EXTENSION>.chromiumapp.org/` (remplacez `<ID_DE_L_EXTENSION>` par
-   l’identifiant visible dans `chrome://extensions`) et autorisez le scope
-   `https://www.googleapis.com/auth/spreadsheets`.
+2. Créez un identifiant client OAuth 2.0 de type « Chrome App » dans Google Cloud
+   en renseignant l’identifiant de l’extension (visible dans `chrome://extensions`).
+   Remplacez ensuite `REPLACE_WITH_OAUTH_CLIENT_ID.apps.googleusercontent.com`
+   dans `manifest.json` par la valeur exacte fournie et assurez-vous que le scope
+   `https://www.googleapis.com/auth/spreadsheets` est bien déclaré.
 3. Lors du premier clic sur « Supprimer les devis utilisés », Chrome affichera une
    fenêtre d’autorisation Google permettant de consentir à l’accès en écriture à la
    feuille. Validez-la pour que la suppression des lignes fonctionne.
@@ -25,8 +23,8 @@ Si un message mentionne un « client OAuth invalide » ou « bad client id �
 1. Vérifiez que le champ `oauth2.client_id` du `manifest.json` contient bien l’identifiant
    complet se terminant par `.apps.googleusercontent.com` fourni par Google Cloud (et non
    la valeur par défaut du dépôt).
-2. Assurez-vous que l’identifiant est de type « Application Web » et que la redirection
-   `https://<ID_DE_L_EXTENSION>.chromiumapp.org/` est déclarée dans Google Cloud.
+2. Assurez-vous que l’identifiant est bien de type « Chrome App » et qu’il fait
+   référence à l’identifiant exact de l’extension dans Google Cloud.
 3. Rechargez l’extension puis relancez la suppression. Chrome doit éventuellement afficher
    la fenêtre d’autorisation si nécessaire.
 
