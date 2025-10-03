@@ -3,6 +3,140 @@ const SPREADSHEET_ID = "1wGfG-tNnxo17dnaQItdvAmrmcYm-2ofRcKmFQ2CI198";
 const QUOTES_RANGE = "Sheet1!A1:Z";
 const CACHE_DURATION_MS = 5 * 60 * 1000;
 const SHEET_METADATA_CACHE_DURATION_MS = 60 * 60 * 1000;
+const SHEETS_WRITE_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
+
+const ensureSheetsOAuthConfigured = () => {
+  if (!chrome?.identity?.getAuthToken) {
+    throw new Error(
+      `La suppression des devis nécessite la permission Chrome Identity et un client OAuth valide (${SHEETS_WRITE_SCOPE}). Vérifiez la configuration dans manifest.json.`
+    );
+  }
+};
+
+const getSheetsAuthToken = ({ interactive = false } = {}) =>
+  new Promise((resolve, reject) => {
+    ensureSheetsOAuthConfigured();
+
+    chrome.identity.getAuthToken(
+      { interactive, scopes: [SHEETS_WRITE_SCOPE] },
+      (token) => {
+        if (chrome.runtime.lastError || !token) {
+          const message =
+            chrome.runtime.lastError?.message ||
+            "Impossible d'obtenir un jeton OAuth pour Google Sheets.";
+          reject(new Error(message));
+          return;
+        }
+
+        resolve(token);
+      }
+    );
+  });
+
+const clearSheetsAuthToken = (token) =>
+  new Promise((resolve) => {
+    if (!token || !chrome?.identity?.removeCachedAuthToken) {
+      resolve();
+      return;
+    }
+
+    chrome.identity.removeCachedAuthToken({ token }, () => {
+      if (chrome.runtime.lastError) {
+        console.warn(
+          "[Background] Impossible de supprimer le jeton OAuth en cache",
+          chrome.runtime.lastError
+        );
+      }
+
+      resolve();
+    });
+  });
+
+const shouldRetryAuthInteractively = (error) => {
+  if (!error?.message) {
+    return false;
+  }
+
+  const normalizedMessage = error.message.toLowerCase();
+
+  return [
+    "user interaction required",
+    "user_not_signed_in",
+    "signin required",
+    "consent required",
+    "the user did not approve access",
+    "needs to authorize",
+  ].some((snippet) => normalizedMessage.includes(snippet));
+};
+
+const performAuthorizedSheetsRequest = async ({
+  url,
+  method = "GET",
+  body,
+  headers = {},
+}) => {
+  ensureSheetsOAuthConfigured();
+
+  const attempt = async (interactive) => {
+    let token;
+
+    try {
+      token = await getSheetsAuthToken({ interactive });
+    } catch (tokenError) {
+      if (!interactive && shouldRetryAuthInteractively(tokenError)) {
+        return attempt(true);
+      }
+
+      throw tokenError;
+    }
+
+    try {
+      const response = await fetch(url, {
+        method,
+        headers: {
+          ...headers,
+          Authorization: `Bearer ${token}`,
+        },
+        body,
+      });
+
+      if (response.status === 401) {
+        await clearSheetsAuthToken(token);
+
+        if (!interactive) {
+          return attempt(true);
+        }
+
+        const errorBody = await response.text().catch(() => "");
+        let details = "";
+
+        if (errorBody) {
+          try {
+            const parsed = JSON.parse(errorBody);
+            const message = parsed?.error?.message;
+            details = message ? ` ${message}` : ` Réponse: ${errorBody}`;
+          } catch (parseError) {
+            details = ` Réponse: ${errorBody}`;
+          }
+        }
+
+        throw new Error(
+          `Authentification Google Sheets requise (${response.status}).${details}`
+        );
+      }
+
+      return response;
+    } catch (requestError) {
+      if (!interactive && shouldRetryAuthInteractively(requestError)) {
+        return attempt(true);
+      }
+
+      throw requestError;
+    }
+  };
+
+  return attempt(false);
+};
 
 let registeredYoolizTabId = null;
 
@@ -308,9 +442,10 @@ const deleteRowsFromSheet = async (rowNumbers = []) => {
       },
     }));
 
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}:batchUpdate?key=${GOOGLE_SHEETS_API_KEY}`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}:batchUpdate`;
 
-  const response = await fetch(url, {
+  const response = await performAuthorizedSheetsRequest({
+    url,
     method: "POST",
     headers: {
       "Content-Type": "application/json",
