@@ -9,11 +9,11 @@
   },
   "permissions": ["storage", "identity"],
   "host_permissions": [
-    "https://*.yooliz.com/liste-des-devis/creer-un-devis/*",
+    "https://*.yooliz.com/*",
     "https://sheets.googleapis.com/*"
   ],
   "oauth2": {
-    "client_id": "982144274843-9spsvbnctljjojhepu6kl75mas40603s.apps.googleusercontent.com",
+    "client_id": "982144274843-shf6g1rapltdj1bat2eqtqbo75n18s5g.apps.googleusercontent.com",
     "scopes": ["https://www.googleapis.com/auth/spreadsheets"]
   },
   "background": {
@@ -22,6 +22,7 @@
   "content_scripts": [
     {
       "matches": [
+        "https://*.yooliz.com/liste-des-devis/creer-un-devis",
         "https://*.yooliz.com/liste-des-devis/creer-un-devis/*"
       ],
       "js": ["content.js"],

@@ -127,6 +127,8 @@ const shouldRetryAuthInteractively = (error) => {
     "consent required",
     "the user did not approve access",
     "needs to authorize",
+    "oauth2 not granted",
+    "not granted or revoked",
   ].some((snippet) => normalizedMessage.includes(snippet));
 };
 
