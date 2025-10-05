@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Yooliz Auto-Fill POC",
+  "version": "1.0.0",
+  "description": "Proof of concept extension to auto-fill Yooliz estimates.",
+  "action": {
+    "default_title": "Test Auto-Fill",
+    "default_popup": "popup.html"
+  },
+  "permissions": ["storage", "identity"],
+  "host_permissions": [
+    "https://*.yooliz.com/liste-des-devis/creer-un-devis/*",
+    "https://sheets.googleapis.com/*"
+  ],
+  "oauth2": {
+    "client_id": "982144274843-9spsvbnctljjojhepu6kl75mas40603s.apps.googleusercontent.com",
+    "scopes": ["https://www.googleapis.com/auth/spreadsheets"]
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.yooliz.com/liste-des-devis/creer-un-devis/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
